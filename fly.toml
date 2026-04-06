@@ -1,0 +1,19 @@
+app = "rog-terminal"
+primary_region = "fra"
+
+[build]
+
+[env]
+  PORT = "3001"
+  NODE_ENV = "production"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[mounts]
+  source = "rog_data"
+  destination = "/app/backend/data"

@@ -6,7 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
 
-  // Track connected clients: Map<ws, { user, sessionId }>
+  // Track connected clients: Map<ws, { user, sessionId, deviceName }>
   const clients = new Map();
 
   function broadcast(sessionId, data, excludeWs = null) {
@@ -42,8 +42,41 @@ function setupWebSocket(server) {
     return users;
   }
 
+  function getAllOnlineUsers() {
+    const users = [];
+    const seen = new Set();
+    for (const [, info] of clients) {
+      const key = `${info.user.id}-${info.deviceName}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        users.push({
+          id: info.user.id,
+          username: info.user.username,
+          displayName: info.user.displayName,
+          deviceName: info.deviceName || '',
+          sessionId: info.sessionId,
+        });
+      }
+    }
+    return users;
+  }
+
+  // Heartbeat to detect dead connections
+  const heartbeatInterval = setInterval(() => {
+    for (const [ws, info] of clients) {
+      if (info.isAlive === false) {
+        clients.delete(ws);
+        ws.terminate();
+        continue;
+      }
+      info.isAlive = false;
+      ws.ping();
+    }
+  }, 30000);
+
+  wss.on('close', () => clearInterval(heartbeatInterval));
+
   wss.on('connection', (ws, req) => {
-    // Extract token from query string
     const url = new URL(req.url, 'http://localhost');
     const token = url.searchParams.get('token');
     const user = verifyToken(token);
@@ -54,10 +87,14 @@ function setupWebSocket(server) {
     }
 
     const deviceName = url.searchParams.get('device') || '';
-    clients.set(ws, { user, sessionId: null, deviceName });
+    clients.set(ws, { user, sessionId: null, deviceName, isAlive: true });
 
-    // Update last seen
     stmts.updateLastSeen.run(deviceName, user.id);
+
+    ws.on('pong', () => {
+      const info = clients.get(ws);
+      if (info) info.isAlive = true;
+    });
 
     ws.on('message', (raw) => {
       let data;
@@ -67,7 +104,6 @@ function setupWebSocket(server) {
         ws.send(JSON.stringify({ type: 'error', message: 'Invalid JSON' }));
         return;
       }
-
       handleMessage(ws, data, user, deviceName);
     });
 
@@ -77,12 +113,23 @@ function setupWebSocket(server) {
         broadcast(info.sessionId, {
           type: 'user_left',
           user: { id: user.id, username: user.username, displayName: user.displayName },
+          timestamp: new Date().toISOString(),
         }, ws);
+
+        // Send updated online users list
+        setTimeout(() => {
+          const onlineUsers = getOnlineUsers(info.sessionId);
+          broadcast(info.sessionId, { type: 'online_users', users: onlineUsers });
+        }, 100);
       }
       clients.delete(ws);
     });
 
-    ws.send(JSON.stringify({ type: 'connected', user: { id: user.id, username: user.username, displayName: user.displayName } }));
+    ws.send(JSON.stringify({
+      type: 'connected',
+      user: { id: user.id, username: user.username, displayName: user.displayName },
+      serverTime: new Date().toISOString(),
+    }));
   });
 
   function handleMessage(ws, data, user, deviceName) {
@@ -94,7 +141,16 @@ function setupWebSocket(server) {
           ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
           return;
         }
+
+        // Leave previous session if any
         const info = clients.get(ws);
+        if (info.sessionId && info.sessionId !== sessionId) {
+          broadcast(info.sessionId, {
+            type: 'user_left',
+            user: { id: user.id, username: user.username, displayName: user.displayName },
+          }, ws);
+        }
+
         info.sessionId = sessionId;
 
         // Send chat history
@@ -105,6 +161,7 @@ function setupWebSocket(server) {
         broadcast(sessionId, {
           type: 'user_joined',
           user: { id: user.id, username: user.username, displayName: user.displayName, deviceName },
+          timestamp: new Date().toISOString(),
         }, ws);
 
         // Send online users
@@ -114,11 +171,33 @@ function setupWebSocket(server) {
 
       case 'create_session': {
         const sessionId = uuidv4();
-        const name = data.name || 'New Session';
+        const name = (data.name || 'New Session').slice(0, 100);
         stmts.createSession.run(sessionId, name, user.id);
         const session = stmts.getSession.get(sessionId);
 
         ws.send(JSON.stringify({ type: 'session_created', session }));
+        broadcastAll({ type: 'sessions_updated' });
+        break;
+      }
+
+      case 'delete_session': {
+        const { sessionId } = data;
+        const session = stmts.getSession.get(sessionId);
+        if (!session) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
+          return;
+        }
+        stmts.deleteSessionMessages.run(sessionId);
+        stmts.deleteSession.run(sessionId);
+        broadcastAll({ type: 'session_deleted', sessionId });
+        broadcastAll({ type: 'sessions_updated' });
+        break;
+      }
+
+      case 'rename_session': {
+        const { sessionId, name } = data;
+        if (!name || !name.trim()) return;
+        stmts.renameSession.run(name.slice(0, 100), sessionId);
         broadcastAll({ type: 'sessions_updated' });
         break;
       }
@@ -149,11 +228,35 @@ function setupWebSocket(server) {
           created_at: new Date().toISOString(),
         };
 
-        // Broadcast to all in session
+        // Broadcast to ALL in session (including sender for confirmation)
         broadcast(info.sessionId, { type: 'new_message', message: userMessage });
+        break;
+      }
 
-        // TODO: Forward to MCP and stream response back
-        // For now, echo that message was received
+      case 'system_message': {
+        // Save a system/assistant message (from MCP response)
+        const info = clients.get(ws);
+        if (!info || !info.sessionId) return;
+
+        const { content, role } = data;
+        if (!content || !['assistant', 'system'].includes(role)) return;
+
+        const result = stmts.addMessage.run(info.sessionId, null, role, content, '');
+        stmts.updateSessionTime.run(info.sessionId);
+
+        const msg = {
+          id: result.lastInsertRowid,
+          session_id: info.sessionId,
+          user_id: null,
+          role,
+          content,
+          device_name: '',
+          display_name: role === 'assistant' ? 'Claude' : 'System',
+          username: null,
+          created_at: new Date().toISOString(),
+        };
+
+        broadcast(info.sessionId, { type: 'new_message', message: msg });
         break;
       }
 
@@ -163,9 +266,17 @@ function setupWebSocket(server) {
           broadcast(info.sessionId, {
             type: 'typing',
             user: { id: user.id, displayName: user.displayName },
-            isTyping: data.isTyping,
+            isTyping: !!data.isTyping,
           }, ws);
         }
+        break;
+      }
+
+      case 'get_online_users': {
+        ws.send(JSON.stringify({
+          type: 'all_online_users',
+          users: getAllOnlineUsers(),
+        }));
         break;
       }
 
@@ -173,6 +284,11 @@ function setupWebSocket(server) {
         ws.send(JSON.stringify({ type: 'error', message: `Unknown message type: ${data.type}` }));
     }
   }
+
+  // Expose broadcast function for external use (MCP proxy)
+  wss.broadcastToSession = broadcast;
+  wss.broadcastAll = broadcastAll;
+  wss.getOnlineUsers = getOnlineUsers;
 
   return wss;
 }

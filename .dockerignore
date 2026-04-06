@@ -1,0 +1,14 @@
+node_modules
+.git
+.env
+*.db
+*.db-wal
+*.db-shm
+desktop/
+frontend/node_modules
+frontend/android
+frontend/ios
+backend/node_modules
+backend/data
+scripts/
+.a5c/

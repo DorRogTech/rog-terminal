@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { logout } from '../utils/api';
 
 export default function Sidebar({
@@ -6,11 +6,17 @@ export default function Sidebar({
   activeSession,
   onSelectSession,
   onNewSession,
+  onDeleteSession,
+  onRenameSession,
   onlineUsers,
   user,
   isOpen,
   onClose,
+  onOpenSettings,
+  connected,
 }) {
+  const [contextMenu, setContextMenu] = useState(null);
+
   function formatTime(dateStr) {
     const d = new Date(dateStr);
     const now = new Date();
@@ -19,6 +25,11 @@ export default function Sidebar({
     if (diff < 3600000) return `${Math.floor(diff / 60000)}m`;
     if (diff < 86400000) return `${Math.floor(diff / 3600000)}h`;
     return d.toLocaleDateString('he-IL');
+  }
+
+  function handleContextMenu(e, session) {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, session });
   }
 
   return (
@@ -30,7 +41,7 @@ export default function Sidebar({
             ROG <span>Terminal</span>
           </div>
           <button className="btn-new-session" onClick={onNewSession}>
-            + session
+            + Session
           </button>
         </div>
 
@@ -40,6 +51,7 @@ export default function Sidebar({
               key={s.id}
               className={`session-item ${activeSession === s.id ? 'active' : ''}`}
               onClick={() => { onSelectSession(s.id); onClose(); }}
+              onContextMenu={(e) => handleContextMenu(e, s)}
             >
               <div className="session-name">{s.name}</div>
               <div className="session-meta">
@@ -48,8 +60,15 @@ export default function Sidebar({
             </div>
           ))}
           {sessions.length === 0 && (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
-              No sessions yet
+            <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+              <div style={{ fontSize: '32px', opacity: 0.3, marginBottom: '12px' }}>
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <polyline points="4 17 10 11 4 5" />
+                  <line x1="12" y1="19" x2="20" y2="19" />
+                </svg>
+              </div>
+              No sessions yet.<br />
+              Create one to start collaborating.
             </div>
           )}
         </div>
@@ -58,7 +77,7 @@ export default function Sidebar({
           <div className="online-users">
             <div className="online-users-title">Online ({onlineUsers.length})</div>
             {onlineUsers.map((u) => (
-              <div key={u.id} className="online-user">
+              <div key={`${u.id}-${u.deviceName}`} className="online-user">
                 <span className="online-dot" />
                 <span className="online-user-name">{u.displayName}</span>
                 {u.deviceName && (
@@ -74,12 +93,42 @@ export default function Sidebar({
             {user?.display_name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || '?'}
           </div>
           <div className="user-details">
-            <div className="user-display-name">{user?.display_name || user?.username}</div>
+            <div className="user-display-name">
+              {user?.display_name || user?.username}
+              <span className={`status-dot ${connected ? 'online' : 'offline'}`} />
+            </div>
             <div className="user-device">{user?.device_name || ''}</div>
           </div>
+          <button className="btn-icon" onClick={onOpenSettings} title="Settings">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
           <button className="btn-logout" onClick={logout}>Logout</button>
         </div>
       </aside>
+
+      {/* Context menu for sessions */}
+      {contextMenu && (
+        <>
+          <div className="context-overlay" onClick={() => setContextMenu(null)} />
+          <div
+            className="context-menu"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+          >
+            <button onClick={() => { onRenameSession(contextMenu.session.id); setContextMenu(null); }}>
+              Rename
+            </button>
+            <button
+              className="danger"
+              onClick={() => { onDeleteSession(contextMenu.session.id); setContextMenu(null); }}
+            >
+              Delete
+            </button>
+          </div>
+        </>
+      )}
     </>
   );
 }

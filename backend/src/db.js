@@ -66,6 +66,8 @@ const stmts = {
   getAllSessions: db.prepare('SELECT s.*, u.display_name as creator_name FROM sessions s JOIN users u ON s.created_by = u.id ORDER BY s.updated_at DESC'),
   updateSessionTime: db.prepare('UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
   renameSession: db.prepare('UPDATE sessions SET name = ? WHERE id = ?'),
+  deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),
+  deleteSessionMessages: db.prepare('DELETE FROM messages WHERE session_id = ?'),
 
   addMessage: db.prepare(
     'INSERT INTO messages (session_id, user_id, role, content, device_name) VALUES (?, ?, ?, ?, ?)'

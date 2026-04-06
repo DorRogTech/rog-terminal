@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head><title>Icon Generator</title></head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// Generate icons at different sizes and download them
+const sizes = [72, 96, 128, 144, 152, 192, 384, 512];
+
+sizes.forEach(size => {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  ctx.fillStyle = '#0a0e17';
+  ctx.beginPath();
+  ctx.roundRect(0, 0, size, size, size * 0.18);
+  ctx.fill();
+
+  // Inner glow
+  const gradient = ctx.createRadialGradient(size/2, size/2, 0, size/2, size/2, size * 0.5);
+  gradient.addColorStop(0, 'rgba(59, 130, 246, 0.15)');
+  gradient.addColorStop(1, 'transparent');
+  ctx.fillStyle = gradient;
+  ctx.fill();
+
+  // Terminal bracket >_
+  ctx.fillStyle = '#3b82f6';
+  ctx.font = `bold ${size * 0.45}px "Courier New", monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('>_', size * 0.5, size * 0.48);
+
+  // "ROG" text
+  ctx.fillStyle = '#e2e8f0';
+  ctx.font = `bold ${size * 0.16}px sans-serif`;
+  ctx.fillText('ROG', size * 0.5, size * 0.78);
+
+  // Download
+  const link = document.createElement('a');
+  link.download = `icon-${size}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+});
+
+document.body.innerHTML = '<h1>Icons generated! Check your downloads.</h1>';
+</script>
+</body>
+</html>
