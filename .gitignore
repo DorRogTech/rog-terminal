@@ -1,0 +1,11 @@
+node_modules/
+.env
+*.db
+*.db-wal
+*.db-shm
+frontend/build/
+backend/data/
+dist/
+.DS_Store
+Thumbs.db
+.a5c/
