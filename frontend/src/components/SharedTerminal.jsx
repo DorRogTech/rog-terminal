@@ -4,6 +4,7 @@ import { FitAddon } from 'xterm-addon-fit';
 import { WebLinksAddon } from 'xterm-addon-web-links';
 import 'xterm/css/xterm.css';
 import wsClient from '../utils/websocket';
+import { processBidi } from '../utils/bidi';
 
 export default function SharedTerminal({ active, onClose }) {
   const termRef = useRef(null);
@@ -64,13 +65,18 @@ export default function SharedTerminal({ active, onClose }) {
       wsClient.send({ type: 'terminal_input', data });
     });
 
-    // Listen for terminal output from server
+    // Listen for terminal output from server - apply BiDi processing
     const unsubOutput = wsClient.on('terminal_output', (msg) => {
-      term.write(msg.data);
+      term.write(processBidi(msg.data));
     });
 
-    const unsubReady = wsClient.on('terminal_ready', () => {
+    const unsubReady = wsClient.on('terminal_ready', (msg) => {
       setReady(true);
+      term.focus();
+    });
+
+    const unsubHistory = wsClient.on('terminal_history', (msg) => {
+      term.write(processBidi(msg.data));
     });
 
     const unsubClosed = wsClient.on('terminal_closed', () => {
@@ -101,6 +107,7 @@ export default function SharedTerminal({ active, onClose }) {
     return () => {
       unsubOutput();
       unsubReady();
+      unsubHistory();
       unsubClosed();
       resizeObserver.disconnect();
       term.dispose();
