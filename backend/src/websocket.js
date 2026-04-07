@@ -3,6 +3,7 @@ const { verifyToken } = require('./auth');
 const { stmts } = require('./db');
 const { v4: uuidv4 } = require('uuid');
 const claudeApi = require('./claude-api');
+const claudeCli = require('./claude-cli');
 
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -232,57 +233,67 @@ function setupWebSocket(server) {
         // Broadcast to ALL in session (including sender for confirmation)
         broadcast(info.sessionId, { type: 'new_message', message: userMessage });
 
-        // If Claude API is configured for this session, send to Claude
-        if (claudeApi.isConfigured(info.sessionId)) {
-          // Get recent messages for context
-          const recentMsgs = stmts.getMessages.all(info.sessionId)
-            .slice(-20)
-            .map(m => ({ role: m.role, content: m.content }));
+        // Send to Claude - uses CLI (regular subscription) or API
+        {
+          const sessionId = info.sessionId;
 
           // Show typing indicator
-          broadcast(info.sessionId, {
+          broadcast(sessionId, {
             type: 'typing',
             user: { id: -1, displayName: 'Claude' },
             isTyping: true,
           });
 
-          claudeApi.sendMessage(info.sessionId, recentMsgs)
+          // Decide which backend to use: CLI (default) or API (if configured)
+          let responsePromise;
+          if (claudeApi.isConfigured(sessionId)) {
+            // Use API key if explicitly configured
+            const recentMsgs = stmts.getMessages.all(sessionId)
+              .slice(-20)
+              .map(m => ({ role: m.role, content: m.content }));
+            responsePromise = claudeApi.sendMessage(sessionId, recentMsgs);
+          } else {
+            // Use Claude CLI (regular subscription, no API key needed!)
+            responsePromise = claudeCli.sendMessage(sessionId, content)
+              .then(r => r.text);
+          }
+
+          responsePromise
             .then((response) => {
-              // Save Claude's response
-              const aResult = stmts.addMessage.run(info.sessionId, null, 'assistant', response, '');
-              stmts.updateSessionTime.run(info.sessionId);
+              const aResult = stmts.addMessage.run(sessionId, null, 'assistant', response, '');
+              stmts.updateSessionTime.run(sessionId);
 
-              const assistantMsg = {
-                id: aResult.lastInsertRowid,
-                session_id: info.sessionId,
-                user_id: null,
-                role: 'assistant',
-                content: response,
-                device_name: '',
-                display_name: 'Claude',
-                username: null,
-                created_at: new Date().toISOString(),
-              };
-
-              // Stop typing and send response
-              broadcast(info.sessionId, {
+              broadcast(sessionId, {
                 type: 'typing',
                 user: { id: -1, displayName: 'Claude' },
                 isTyping: false,
               });
-              broadcast(info.sessionId, { type: 'new_message', message: assistantMsg });
+              broadcast(sessionId, {
+                type: 'new_message',
+                message: {
+                  id: aResult.lastInsertRowid,
+                  session_id: sessionId,
+                  user_id: null,
+                  role: 'assistant',
+                  content: response,
+                  device_name: '',
+                  display_name: 'Claude',
+                  username: null,
+                  created_at: new Date().toISOString(),
+                },
+              });
             })
             .catch((err) => {
-              broadcast(info.sessionId, {
+              broadcast(sessionId, {
                 type: 'typing',
                 user: { id: -1, displayName: 'Claude' },
                 isTyping: false,
               });
-              broadcast(info.sessionId, {
+              broadcast(sessionId, {
                 type: 'new_message',
                 message: {
                   id: Date.now(),
-                  session_id: info.sessionId,
+                  session_id: sessionId,
                   user_id: null,
                   role: 'system',
                   content: `Error: ${err.message}`,

@@ -11,6 +11,7 @@ const { stmts } = require('./db');
 const { setupWebSocket } = require('./websocket');
 const mcpBridge = require('./mcp-bridge');
 const claudeApi = require('./claude-api');
+const claudeCli = require('./claude-cli');
 
 const app = express();
 const server = http.createServer(app);
@@ -214,6 +215,24 @@ app.get('/api/claude/status', authMiddleware, (req, res) => {
   res.json({ sessions: claudeApi.getStatus() });
 });
 
+// === Claude CLI Routes ===
+
+app.get('/api/claude-cli/status', authMiddleware, async (req, res) => {
+  const available = await claudeCli.isAvailable();
+  res.json({
+    available,
+    ...claudeCli.getStatus(),
+  });
+});
+
+app.post('/api/claude-cli/reset', authMiddleware, (req, res) => {
+  const { sessionId } = req.body;
+  if (sessionId) {
+    claudeCli.resetSession(sessionId);
+  }
+  res.json({ ok: true });
+});
+
 // === Health check ===
 
 app.get('/api/health', (req, res) => {
@@ -222,6 +241,7 @@ app.get('/api/health', (req, res) => {
     version: '1.0.0',
     name: 'Rog Terminal',
     mcpReady: mcpBridge.isReady(),
+    claudeCliAvailable: true,
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
