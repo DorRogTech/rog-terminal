@@ -12,8 +12,14 @@
  * Everyone sees the same output and anyone can type.
  */
 
-const pty = require('node-pty');
 const { EventEmitter } = require('events');
+
+let pty;
+try {
+  pty = require('node-pty');
+} catch {
+  console.log('[SharedTerminal] node-pty not available (OK on cloud deployments)');
+}
 
 class SharedTerminal extends EventEmitter {
   constructor() {
@@ -28,6 +34,11 @@ class SharedTerminal extends EventEmitter {
   create(sessionId, options = {}) {
     if (this.terminals.has(sessionId)) {
       return this.terminals.get(sessionId);
+    }
+
+    if (!pty) {
+      console.log('[SharedTerminal] node-pty not available, cannot create terminal');
+      return null;
     }
 
     const cols = options.cols || 120;
