@@ -4,6 +4,7 @@ import { login, register } from '../utils/api';
 export default function AuthPage({ onAuth }) {
   const [isLogin, setIsLogin] = useState(true);
   const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [deviceName, setDeviceName] = useState(() => getDeviceName());
@@ -21,11 +22,16 @@ export default function AuthPage({ onAuth }) {
         onAuth(data.user, data.token);
       } else {
         if (!displayName.trim()) {
-          setError('display name is required');
+          setError('Display name is required');
           setLoading(false);
           return;
         }
-        const data = await register(username, password, displayName, deviceName);
+        if (!email.includes('@rog-tech.com')) {
+          setError('Only @rog-tech.com emails are allowed');
+          setLoading(false);
+          return;
+        }
+        const data = await register(username, email, password, displayName, deviceName);
         onAuth(data.user, data.token);
       }
     } catch (err) {
@@ -40,23 +46,38 @@ export default function AuthPage({ onAuth }) {
       <div className="auth-card">
         <div className="auth-title">Rog Terminal</div>
         <div className="auth-subtitle">
-          {isLogin ? 'Login to your account' : 'Create new account'}
+          {isLogin ? 'Login' : 'Register — @rog-tech.com only'}
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
-            <label className="form-label">Username</label>
+            <label className="form-label">{isLogin ? 'Username or Email' : 'Username'}</label>
             <input
               className="form-input"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter username"
+              placeholder={isLogin ? 'username or email' : 'username'}
               required
               autoComplete="username"
               dir="ltr"
             />
           </div>
+
+          {!isLogin && (
+            <div className="form-group">
+              <label className="form-label">Email</label>
+              <input
+                className="form-input"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="name@rog-tech.com"
+                required
+                dir="ltr"
+              />
+            </div>
+          )}
 
           <div className="form-group">
             <label className="form-label">Password</label>
@@ -65,7 +86,7 @@ export default function AuthPage({ onAuth }) {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter password"
+              placeholder="password"
               required
               autoComplete={isLogin ? 'current-password' : 'new-password'}
               dir="ltr"
@@ -73,28 +94,29 @@ export default function AuthPage({ onAuth }) {
           </div>
 
           {!isLogin && (
-            <div className="form-group">
-              <label className="form-label">Display Name</label>
-              <input
-                className="form-input"
-                type="text"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="Your display name"
-              />
-            </div>
+            <>
+              <div className="form-group">
+                <label className="form-label">Display Name</label>
+                <input
+                  className="form-input"
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  placeholder="Dor / Ronen..."
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Device Name</label>
+                <input
+                  className="form-input"
+                  type="text"
+                  value={deviceName}
+                  onChange={(e) => setDeviceName(e.target.value)}
+                  placeholder="My Phone / My PC"
+                />
+              </div>
+            </>
           )}
-
-          <div className="form-group">
-            <label className="form-label">Device Name</label>
-            <input
-              className="form-input"
-              type="text"
-              value={deviceName}
-              onChange={(e) => setDeviceName(e.target.value)}
-              placeholder="My Phone / My PC"
-            />
-          </div>
 
           {error && <div className="form-error">{error}</div>}
 

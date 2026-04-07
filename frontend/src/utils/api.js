@@ -46,10 +46,10 @@ export async function login(username, password, deviceName) {
   return data;
 }
 
-export async function register(username, password, displayName, deviceName) {
+export async function register(username, email, password, displayName, deviceName) {
   const data = await apiFetch('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ username, password, displayName, deviceName }),
+    body: JSON.stringify({ username, email, password, displayName, deviceName }),
   });
   setAuth(data.token, data.user);
   return data;
@@ -73,6 +73,13 @@ export async function createSession(name) {
 
 export async function getMessages(sessionId) {
   return apiFetch(`/sessions/${sessionId}/messages`);
+}
+
+export async function saveApiKey(apiKey) {
+  return apiFetch('/auth/api-key', {
+    method: 'POST',
+    body: JSON.stringify({ apiKey }),
+  });
 }
 
 export async function configureClaude(sessionId, apiKey, model) {

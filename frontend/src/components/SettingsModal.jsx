@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { configureClaude, getMcpStatus, startMcp } from '../utils/api';
+import { configureClaude, getMcpStatus, startMcp, saveApiKey } from '../utils/api';
 
 export default function SettingsModal({ user, activeSession, onClose, onSave }) {
   const [displayName, setDisplayName] = useState(user?.display_name || '');
   const [deviceName, setDeviceName] = useState(user?.device_name || '');
-  const [apiKey, setApiKey] = useState(localStorage.getItem('rog_claude_api_key') || '');
+  const [apiKey, setApiKey] = useState(user?.claude_api_key || localStorage.getItem('rog_claude_api_key') || '');
   const [model, setModel] = useState(localStorage.getItem('rog_claude_model') || 'claude-sonnet-4-20250514');
   const [notifications, setNotifications] = useState(
     localStorage.getItem('rog_notifications') !== 'false'
@@ -26,20 +26,16 @@ export default function SettingsModal({ user, activeSession, onClose, onSave }) 
     setMessage('');
 
     try {
-      // Save API key locally
       localStorage.setItem('rog_claude_api_key', apiKey);
       localStorage.setItem('rog_claude_model', model);
       localStorage.setItem('rog_notifications', notifications);
 
-      // If there's an active session and API key, configure it on the server
-      if (activeSession && apiKey) {
-        await configureClaude(activeSession, apiKey, model);
-        setMessage('Claude API configured! Messages will now get AI responses.');
-      } else if (!apiKey) {
-        setMessage('Settings saved. Add an API key to enable Claude responses.');
-      } else {
-        setMessage('Settings saved. Join a session to activate Claude.');
+      // Save API key to server (for fallback when CLI not available)
+      if (apiKey) {
+        await saveApiKey(apiKey);
       }
+
+      setMessage('Settings saved!');
 
       onSave({ displayName, deviceName });
     } catch (err) {
@@ -97,7 +93,8 @@ export default function SettingsModal({ user, activeSession, onClose, onSave }) 
           <div className="settings-section">
             <h3 className="settings-section-title">Claude API - AI Chat</h3>
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
-              Add your Anthropic API key to enable Claude responses.
+              If the server has Claude Code installed, it works automatically.
+              Otherwise, add your own Anthropic API key to connect your Claude account.
               Get a key from <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener" style={{ color: 'var(--accent)' }}>console.anthropic.com</a>
             </p>
             <div className="form-group">

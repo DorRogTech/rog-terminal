@@ -37,9 +37,9 @@ app.use(express.static(frontendPath));
 
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, password, displayName, deviceName } = req.body;
-    if (!username || !password || !displayName) {
-      return res.status(400).json({ error: 'username, password, and displayName are required' });
+    const { username, email, password, displayName, deviceName } = req.body;
+    if (!username || !email || !password || !displayName) {
+      return res.status(400).json({ error: 'username, email, password, and displayName are required' });
     }
     if (username.length < 2 || username.length > 30) {
       return res.status(400).json({ error: 'Username must be 2-30 characters' });
@@ -47,7 +47,7 @@ app.post('/api/auth/register', async (req, res) => {
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
-    const result = await register(username, password, displayName, deviceName || '');
+    const result = await register(username, email, password, displayName, deviceName || '');
     res.json(result);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -213,6 +213,14 @@ app.post('/api/claude/send', authMiddleware, async (req, res) => {
 
 app.get('/api/claude/status', authMiddleware, (req, res) => {
   res.json({ sessions: claudeApi.getStatus() });
+});
+
+// === User API Key ===
+
+app.post('/api/auth/api-key', authMiddleware, (req, res) => {
+  const { apiKey } = req.body;
+  stmts.updateApiKey.run(apiKey || '', req.user.id);
+  res.json({ ok: true });
 });
 
 // === Claude CLI Routes ===

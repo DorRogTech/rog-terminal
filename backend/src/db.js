@@ -1,16 +1,13 @@
 const Database = require('better-sqlite3');
 const path = require('path');
-const bcrypt = require('bcryptjs');
 
 const DB_PATH = path.join(__dirname, '..', 'data', 'rog-terminal.db');
 
-// Ensure data directory exists
 const fs = require('fs');
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new Database(DB_PATH);
 
-// Enable WAL mode for better concurrent access
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
@@ -19,9 +16,11 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
+    email TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
     display_name TEXT NOT NULL,
     device_name TEXT DEFAULT '',
+    claude_api_key TEXT DEFAULT '',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     last_seen DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -51,15 +50,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sessions_updated ON sessions(updated_at DESC);
 `);
 
-// Prepared statements
+// Add email + claude_api_key columns if they don't exist (migration)
+try { db.exec('ALTER TABLE users ADD COLUMN email TEXT DEFAULT ""'); } catch {}
+try { db.exec('ALTER TABLE users ADD COLUMN claude_api_key TEXT DEFAULT ""'); } catch {}
+
 const stmts = {
   createUser: db.prepare(
-    'INSERT INTO users (username, password_hash, display_name, device_name) VALUES (?, ?, ?, ?)'
+    'INSERT INTO users (username, email, password_hash, display_name, device_name) VALUES (?, ?, ?, ?, ?)'
   ),
   getUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
-  getUserById: db.prepare('SELECT id, username, display_name, device_name, last_seen FROM users WHERE id = ?'),
+  getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
+  getUserById: db.prepare('SELECT id, username, email, display_name, device_name, claude_api_key, last_seen FROM users WHERE id = ?'),
   updateLastSeen: db.prepare('UPDATE users SET last_seen = CURRENT_TIMESTAMP, device_name = ? WHERE id = ?'),
-  getAllUsers: db.prepare('SELECT id, username, display_name, device_name, last_seen FROM users'),
+  updateApiKey: db.prepare('UPDATE users SET claude_api_key = ? WHERE id = ?'),
+  getAllUsers: db.prepare('SELECT id, username, email, display_name, device_name, last_seen FROM users'),
 
   createSession: db.prepare('INSERT INTO sessions (id, name, created_by) VALUES (?, ?, ?)'),
   getSession: db.prepare('SELECT * FROM sessions WHERE id = ?'),

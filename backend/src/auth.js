@@ -4,10 +4,11 @@ const { stmts } = require('./db');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'rog-terminal-default-secret-change-me';
 const TOKEN_EXPIRY = '7d';
+const ALLOWED_DOMAIN = process.env.ALLOWED_DOMAIN || 'rog-tech.com';
 
 function generateToken(user) {
   return jwt.sign(
-    { id: user.id, username: user.username, displayName: user.display_name },
+    { id: user.id, username: user.username, email: user.email, displayName: user.display_name },
     JWT_SECRET,
     { expiresIn: TOKEN_EXPIRY }
   );
@@ -21,19 +22,43 @@ function verifyToken(token) {
   }
 }
 
-async function register(username, password, displayName, deviceName = '') {
-  const existing = stmts.getUserByUsername.get(username);
-  if (existing) {
+function validateEmail(email) {
+  if (!email || !email.includes('@')) {
+    throw new Error('Valid email is required');
+  }
+  const domain = email.split('@')[1].toLowerCase();
+  if (domain !== ALLOWED_DOMAIN) {
+    throw new Error(`Only @${ALLOWED_DOMAIN} emails are allowed`);
+  }
+  return email.toLowerCase().trim();
+}
+
+async function register(username, email, password, displayName, deviceName = '') {
+  // Validate email domain
+  email = validateEmail(email);
+
+  const existingUser = stmts.getUserByUsername.get(username);
+  if (existingUser) {
     throw new Error('Username already exists');
   }
+
+  const existingEmail = stmts.getUserByEmail.get(email);
+  if (existingEmail) {
+    throw new Error('Email already registered');
+  }
+
   const hash = await bcrypt.hash(password, 12);
-  const result = stmts.createUser.run(username, hash, displayName, deviceName);
+  const result = stmts.createUser.run(username, email, hash, displayName, deviceName);
   const user = stmts.getUserById.get(result.lastInsertRowid);
   return { user, token: generateToken(user) };
 }
 
 async function login(username, password, deviceName = '') {
-  const user = stmts.getUserByUsername.get(username);
+  // Allow login with username or email
+  let user = stmts.getUserByUsername.get(username);
+  if (!user) {
+    user = stmts.getUserByEmail.get(username.toLowerCase());
+  }
   if (!user) {
     throw new Error('Invalid credentials');
   }
@@ -59,4 +84,4 @@ function authMiddleware(req, res, next) {
   next();
 }
 
-module.exports = { generateToken, verifyToken, register, login, authMiddleware };
+module.exports = { generateToken, verifyToken, register, login, authMiddleware, ALLOWED_DOMAIN };
