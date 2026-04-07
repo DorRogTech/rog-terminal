@@ -763,6 +763,16 @@ body {
   unicode-bidi: plaintext;
 }
 
+.term-line {
+  min-height: 1.4em;
+  unicode-bidi: plaintext;
+  padding: 0 2px;
+}
+
+.term-line:hover {
+  background: rgba(255,255,255,0.03);
+}
+
 /* === Rich Terminal Input === */
 
 .rich-terminal-input-area {
