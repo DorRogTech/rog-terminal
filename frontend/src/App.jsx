@@ -3,6 +3,7 @@ import AuthPage from './components/AuthPage';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import SettingsModal from './components/SettingsModal';
+import SharedTerminal from './components/SharedTerminal';
 import { getToken, getUser, getSessions, logout } from './utils/api';
 import wsClient from './utils/websocket';
 
@@ -18,6 +19,7 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [connected, setConnected] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showTerminal, setShowTerminal] = useState(false);
 
   // Load sessions on mount
   useEffect(() => {
@@ -221,6 +223,8 @@ export default function App() {
         typingUsers={typingUsers}
         onMenuClick={() => setSidebarOpen(true)}
         currentUser={user}
+        onOpenTerminal={() => setShowTerminal(true)}
+        hasActiveSession={!!activeSession}
       />
       {showSettings && (
         <SettingsModal
@@ -230,6 +234,10 @@ export default function App() {
           onSave={handleSettingsSave}
         />
       )}
+      <SharedTerminal
+        active={showTerminal && !!activeSession}
+        onClose={() => setShowTerminal(false)}
+      />
     </div>
   );
 }

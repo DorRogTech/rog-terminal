@@ -670,6 +670,114 @@ body {
   }
 }
 
+/* === Shared Terminal === */
+
+.shared-terminal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.shared-terminal-container {
+  width: 100%;
+  max-width: 1200px;
+  height: 85vh;
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.shared-terminal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border);
+  direction: ltr;
+}
+
+.shared-terminal-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.terminal-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.terminal-dot.green { background: var(--success); }
+.terminal-dot.red { background: var(--error); }
+
+.shared-terminal-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.btn-terminal-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+}
+.btn-terminal-close:hover { color: var(--error); }
+
+.shared-terminal-body {
+  flex: 1;
+  padding: 4px;
+  overflow: hidden;
+  direction: ltr;
+}
+
+.shared-terminal-body .xterm {
+  height: 100%;
+}
+
+.shared-terminal-body .xterm-viewport {
+  scrollbar-width: thin;
+}
+
+/* === Terminal Toggle Button === */
+
+.btn-terminal {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  transition: all var(--transition);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-terminal:hover {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+}
+
 /* === Desktop Only === */
 
 .desktop-only {

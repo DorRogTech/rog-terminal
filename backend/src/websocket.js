@@ -4,6 +4,7 @@ const { stmts } = require('./db');
 const { v4: uuidv4 } = require('uuid');
 const claudeApi = require('./claude-api');
 const claudeCli = require('./claude-cli');
+const sharedTerminal = require('./shared-terminal');
 
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -382,10 +383,75 @@ function setupWebSocket(server) {
         break;
       }
 
+      // === Shared Terminal (full interactive Claude) ===
+
+      case 'terminal_open': {
+        const info = clients.get(ws);
+        if (!info || !info.sessionId) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Join a session first' }));
+          return;
+        }
+        const sessionId = info.sessionId;
+
+        // Create terminal if it doesn't exist
+        if (!sharedTerminal.has(sessionId)) {
+          sharedTerminal.create(sessionId, {
+            cols: data.cols || 120,
+            rows: data.rows || 40,
+          });
+        }
+
+        // Send existing history to this user
+        const history = sharedTerminal.getHistory(sessionId);
+        if (history) {
+          ws.send(JSON.stringify({ type: 'terminal_output', data: history }));
+        }
+
+        ws.send(JSON.stringify({ type: 'terminal_ready', sessionId }));
+        console.log(`[Terminal] User "${user.displayName}" opened terminal for session ${sessionId}`);
+        break;
+      }
+
+      case 'terminal_input': {
+        const info = clients.get(ws);
+        if (!info || !info.sessionId) return;
+
+        try {
+          sharedTerminal.write(info.sessionId, data.data);
+        } catch (err) {
+          ws.send(JSON.stringify({ type: 'error', message: err.message }));
+        }
+        break;
+      }
+
+      case 'terminal_resize': {
+        const info = clients.get(ws);
+        if (!info || !info.sessionId) return;
+        sharedTerminal.resize(info.sessionId, data.cols || 120, data.rows || 40);
+        break;
+      }
+
+      case 'terminal_kill': {
+        const info = clients.get(ws);
+        if (!info || !info.sessionId) return;
+        sharedTerminal.kill(info.sessionId);
+        broadcast(info.sessionId, { type: 'terminal_closed' });
+        break;
+      }
+
       default:
         ws.send(JSON.stringify({ type: 'error', message: `Unknown message type: ${data.type}` }));
     }
   }
+
+  // Forward terminal output to all WebSocket clients in the session
+  sharedTerminal.on('output', ({ sessionId, data: termData }) => {
+    broadcast(sessionId, { type: 'terminal_output', data: termData });
+  });
+
+  sharedTerminal.on('exit', ({ sessionId }) => {
+    broadcast(sessionId, { type: 'terminal_closed' });
+  });
 
   // Expose broadcast function for external use (MCP proxy)
   wss.broadcastToSession = broadcast;
