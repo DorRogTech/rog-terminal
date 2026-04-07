@@ -385,7 +385,10 @@ function setupWebSocket(server) {
 
       // === Shared Terminal (full interactive Claude) ===
 
-      case 'terminal_open': {
+      case 'terminal_open':
+      case 'terminal_input':
+      case 'terminal_resize':
+      case 'terminal_kill': {
         const info = clients.get(ws);
         if (!info || !info.sessionId) {
           ws.send(JSON.stringify({ type: 'error', message: 'Join a session first' }));
@@ -393,49 +396,59 @@ function setupWebSocket(server) {
         }
         const sessionId = info.sessionId;
 
-        // Create terminal if it doesn't exist
-        if (!sharedTerminal.has(sessionId)) {
-          sharedTerminal.create(sessionId, {
-            cols: data.cols || 120,
-            rows: data.rows || 40,
-          });
+        // Try local PTY first (works on localhost)
+        if (data.type === 'terminal_open' && sharedTerminal.has(sessionId)) {
+          const history = sharedTerminal.getHistory(sessionId);
+          if (history) ws.send(JSON.stringify({ type: 'terminal_output', data: history }));
+          ws.send(JSON.stringify({ type: 'terminal_ready', sessionId }));
+          break;
         }
 
-        // Send existing history to this user
-        const history = sharedTerminal.getHistory(sessionId);
-        if (history) {
-          ws.send(JSON.stringify({ type: 'terminal_output', data: history }));
+        if (data.type === 'terminal_open') {
+          const created = sharedTerminal.create(sessionId, { cols: data.cols || 120, rows: data.rows || 40 });
+          if (created) {
+            ws.send(JSON.stringify({ type: 'terminal_ready', sessionId }));
+            console.log(`[Terminal] Local PTY opened for session ${sessionId}`);
+            break;
+          }
         }
 
-        ws.send(JSON.stringify({ type: 'terminal_ready', sessionId }));
-        console.log(`[Terminal] User "${user.displayName}" opened terminal for session ${sessionId}`);
+        if (sharedTerminal.has(sessionId)) {
+          if (data.type === 'terminal_input') sharedTerminal.write(sessionId, data.data);
+          else if (data.type === 'terminal_resize') sharedTerminal.resize(sessionId, data.cols || 120, data.rows || 40);
+          else if (data.type === 'terminal_kill') { sharedTerminal.kill(sessionId); broadcast(sessionId, { type: 'terminal_closed' }); }
+          break;
+        }
+
+        // No local PTY available — forward to an Agent in this session
+        let agentWs = null;
+        for (const [clientWs, clientInfo] of clients) {
+          if (clientInfo.sessionId === sessionId && clientInfo.deviceName?.startsWith('Agent-') && clientWs !== ws) {
+            agentWs = clientWs;
+            break;
+          }
+        }
+
+        if (agentWs && agentWs.readyState === 1) {
+          // Forward terminal command to the agent
+          agentWs.send(JSON.stringify(data));
+          if (data.type === 'terminal_open') {
+            console.log(`[Terminal] Forwarded to remote Agent for session ${sessionId}`);
+          }
+        } else {
+          ws.send(JSON.stringify({ type: 'error', message: 'No terminal available. An Agent must be running on a machine with Claude Code.' }));
+        }
         break;
       }
 
-      case 'terminal_input': {
+      // Agent sends terminal output back — broadcast to all users in session
+      case 'terminal_output':
+      case 'terminal_ready':
+      case 'terminal_closed': {
         const info = clients.get(ws);
-        if (!info || !info.sessionId) return;
-
-        try {
-          sharedTerminal.write(info.sessionId, data.data);
-        } catch (err) {
-          ws.send(JSON.stringify({ type: 'error', message: err.message }));
+        if (info && info.sessionId) {
+          broadcast(info.sessionId, data, ws);
         }
-        break;
-      }
-
-      case 'terminal_resize': {
-        const info = clients.get(ws);
-        if (!info || !info.sessionId) return;
-        sharedTerminal.resize(info.sessionId, data.cols || 120, data.rows || 40);
-        break;
-      }
-
-      case 'terminal_kill': {
-        const info = clients.get(ws);
-        if (!info || !info.sessionId) return;
-        sharedTerminal.kill(info.sessionId);
-        broadcast(info.sessionId, { type: 'terminal_closed' });
         break;
       }
 

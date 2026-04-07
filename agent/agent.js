@@ -20,6 +20,7 @@ const WebSocket = require('ws');
 const { spawn } = require('child_process');
 const https = require('https');
 const http = require('http');
+const pty = require('node-pty');
 
 // --- Parse arguments ---
 const args = {};
@@ -61,6 +62,7 @@ const claudeSessions = new Map(); // rogSessionId -> claudeSessionId
 let currentSessionId = null;
 let ws = null;
 let token = null;
+let terminalProc = null; // PTY process for shared terminal
 
 // --- HTTP helper ---
 function apiFetch(path, options = {}) {
@@ -260,6 +262,77 @@ function connectWs() {
       case 'history': {
         console.log(`  Loaded ${data.messages.length} messages from history`);
         currentSessionId = data.sessionId;
+        break;
+      }
+
+      // === Shared Terminal (remote PTY via Agent) ===
+
+      case 'terminal_open': {
+        if (terminalProc) {
+          // Already running, send ready
+          ws.send(JSON.stringify({ type: 'terminal_ready', sessionId: currentSessionId }));
+          break;
+        }
+
+        console.log('  [Terminal] Opening shared terminal...');
+        const isWin = process.platform === 'win32';
+        const shell = isWin ? 'cmd.exe' : '/bin/bash';
+
+        terminalProc = pty.spawn(shell, [], {
+          name: 'xterm-256color',
+          cols: data.cols || 120,
+          rows: data.rows || 40,
+          cwd: process.env.HOME || process.cwd(),
+          env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+        });
+
+        terminalProc.onData((termData) => {
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'terminal_output', data: termData }));
+          }
+        });
+
+        terminalProc.onExit(() => {
+          console.log('  [Terminal] Closed');
+          terminalProc = null;
+          if (ws && ws.readyState === 1) {
+            ws.send(JSON.stringify({ type: 'terminal_closed' }));
+          }
+        });
+
+        // Auto-start claude
+        setTimeout(() => {
+          if (terminalProc) {
+            const cmd = isWin ? 'claude --dangerously-skip-permissions\r' : 'claude --dangerously-skip-permissions\n';
+            terminalProc.write(cmd);
+            console.log('  [Terminal] Claude started');
+          }
+        }, 500);
+
+        ws.send(JSON.stringify({ type: 'terminal_ready', sessionId: currentSessionId }));
+        break;
+      }
+
+      case 'terminal_input': {
+        if (terminalProc) {
+          terminalProc.write(data.data);
+        }
+        break;
+      }
+
+      case 'terminal_resize': {
+        if (terminalProc) {
+          terminalProc.resize(data.cols || 120, data.rows || 40);
+        }
+        break;
+      }
+
+      case 'terminal_kill': {
+        if (terminalProc) {
+          terminalProc.kill();
+          terminalProc = null;
+        }
+        ws.send(JSON.stringify({ type: 'terminal_closed' }));
         break;
       }
 
