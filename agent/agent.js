@@ -195,11 +195,21 @@ function connectWs() {
     console.log('  ✓ Press Ctrl+C to stop.');
     console.log('');
 
-    // Auto-join session if specified
+    // Auto-join session
     if (SESSION) {
       ws.send(JSON.stringify({ type: 'join_session', sessionId: SESSION }));
       currentSessionId = SESSION;
       console.log(`  Auto-joined session: ${SESSION}`);
+    } else {
+      // Join the most recent session automatically
+      apiFetch('/api/sessions').then(({ sessions }) => {
+        if (sessions && sessions.length > 0) {
+          const latest = sessions[0];
+          ws.send(JSON.stringify({ type: 'join_session', sessionId: latest.id }));
+          currentSessionId = latest.id;
+          console.log(`  Auto-joined latest session: ${latest.name}`);
+        }
+      }).catch(() => {});
     }
   });
 
@@ -210,17 +220,10 @@ function connectWs() {
     switch (data.type) {
       case 'new_message': {
         const msg = data.message;
-        // Only respond to user messages (not our own responses)
+        // Only respond to user messages (not our own responses or system)
         if (msg.role !== 'user') break;
-
-        const sessionId = msg.session_id;
-        if (!sessionId) break;
-
-        // Make sure we're in this session
-        if (currentSessionId !== sessionId) {
-          ws.send(JSON.stringify({ type: 'join_session', sessionId }));
-          currentSessionId = sessionId;
-        }
+        // Don't respond to our own messages
+        if (msg.device_name && msg.device_name.startsWith('Agent-')) break;
 
         console.log(`  [${msg.display_name}] ${msg.content.slice(0, 60)}...`);
 

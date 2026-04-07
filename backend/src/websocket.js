@@ -238,19 +238,24 @@ function setupWebSocket(server) {
         {
           const sessionId = info.sessionId;
 
-          // Check if any agent is connected to this session
-          // (agent device names start with "Agent-")
-          let hasAgent = false;
-          for (const [, clientInfo] of clients) {
-            if (clientInfo.sessionId === sessionId && clientInfo.deviceName?.startsWith('Agent-')) {
-              hasAgent = true;
+          // Check if any agent is connected (any session)
+          let agentWs = null;
+          for (const [clientWs, clientInfo] of clients) {
+            if (clientInfo.deviceName?.startsWith('Agent-') && clientWs.readyState === 1) {
+              agentWs = clientWs;
+              // If agent is not in this session, move it
+              if (clientInfo.sessionId !== sessionId) {
+                clientInfo.sessionId = sessionId;
+                console.log(`[Chat] Moved agent to session ${sessionId}`);
+              }
               break;
             }
           }
 
-          // If an agent is connected, let it handle the response - don't use server CLI
-          if (hasAgent) {
+          // If an agent is connected, forward the message to it
+          if (agentWs) {
             console.log(`[Chat] User "${user.displayName}" sent: "${content.slice(0, 80)}..." -> agent will handle`);
+            // The agent already received the new_message broadcast, it will respond
             break;
           }
 
