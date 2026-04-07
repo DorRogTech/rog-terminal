@@ -233,9 +233,26 @@ function setupWebSocket(server) {
         // Broadcast to ALL in session (including sender for confirmation)
         broadcast(info.sessionId, { type: 'new_message', message: userMessage });
 
-        // Send to Claude - uses CLI (regular subscription) or API
+        // Send to Claude - server CLI, agent, or user's API key
         {
           const sessionId = info.sessionId;
+
+          // Check if any agent is connected to this session
+          // (agent device names start with "Agent-")
+          let hasAgent = false;
+          for (const [, clientInfo] of clients) {
+            if (clientInfo.sessionId === sessionId && clientInfo.deviceName?.startsWith('Agent-')) {
+              hasAgent = true;
+              break;
+            }
+          }
+
+          // If an agent is connected, let it handle the response - don't use server CLI
+          if (hasAgent) {
+            console.log(`[Chat] User "${user.displayName}" sent: "${content.slice(0, 80)}..." -> agent will handle`);
+            break;
+          }
+
           console.log(`[Chat] User "${user.displayName}" sent: "${content.slice(0, 80)}..." -> calling Claude CLI`);
 
           // Show typing indicator

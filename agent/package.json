@@ -1,0 +1,12 @@
+{
+  "name": "rog-terminal-agent",
+  "version": "1.0.0",
+  "description": "Run this on your machine to connect YOUR Claude to Rog Terminal",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
