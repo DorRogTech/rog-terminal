@@ -780,8 +780,13 @@ body {
   }
 
   .rich-terminal-input {
-    font-size: 16px; /* Prevent iOS zoom */
+    font-size: 16px;
     padding: 12px 14px;
+  }
+
+  .rich-terminal-status-bar {
+    padding: 6px 12px;
+    font-size: 10px;
   }
 
   /* Modal mobile */
@@ -1016,6 +1021,27 @@ body {
 .rich-terminal-input::placeholder {
   color: var(--text-muted);
   font-family: var(--font-hebrew);
+}
+
+/* Hidden input captures keystrokes for terminal */
+.terminal-hidden-input {
+  position: fixed;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+  left: -100px;
+  top: -100px;
+}
+
+.rich-terminal-status-bar {
+  display: flex;
+  justify-content: space-between;
+  padding: 6px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  font-size: 11px;
+  color: var(--text-muted);
+  direction: ltr;
 }
 
 /* === Terminal Toggle Button === */
