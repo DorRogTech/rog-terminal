@@ -236,6 +236,7 @@ function setupWebSocket(server) {
         // Send to Claude - uses CLI (regular subscription) or API
         {
           const sessionId = info.sessionId;
+          console.log(`[Chat] User "${user.displayName}" sent: "${content.slice(0, 80)}..." -> calling Claude CLI`);
 
           // Show typing indicator
           broadcast(sessionId, {
@@ -260,6 +261,7 @@ function setupWebSocket(server) {
 
           responsePromise
             .then((response) => {
+              console.log(`[Chat] Claude responded: "${(response || '').slice(0, 100)}..."`);
               const aResult = stmts.addMessage.run(sessionId, null, 'assistant', response, '');
               stmts.updateSessionTime.run(sessionId);
 
@@ -284,6 +286,7 @@ function setupWebSocket(server) {
               });
             })
             .catch((err) => {
+              console.error(`[Chat] Claude error:`, err.message);
               broadcast(sessionId, {
                 type: 'typing',
                 user: { id: -1, displayName: 'Claude' },
