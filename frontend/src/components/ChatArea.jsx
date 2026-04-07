@@ -99,7 +99,7 @@ export default function ChatArea({
       <div className="chat-area">
         <div className="mobile-header">
           <button className="btn-menu" onClick={onMenuClick}>&#9776;</button>
-          <span style={{ fontWeight: 600 }}>Rog Terminal</span>
+          <span style={{ fontWeight: 600, flex: 1 }}>Rog Terminal</span>
         </div>
         <div className="empty-state">
           <div className="empty-state-icon">
@@ -121,7 +121,12 @@ export default function ChatArea({
     <div className="chat-area">
       <div className="mobile-header">
         <button className="btn-menu" onClick={onMenuClick}>&#9776;</button>
-        <span style={{ fontWeight: 600 }}>{sessionName}</span>
+        <span style={{ fontWeight: 600, flex: 1 }}>{sessionName}</span>
+        {hasActiveSession && (
+          <button className="btn-terminal" onClick={onOpenTerminal} style={{ padding: '6px 10px' }}>
+            >_
+          </button>
+        )}
       </div>
 
       <div className="chat-header desktop-only">
