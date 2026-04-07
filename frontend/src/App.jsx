@@ -225,6 +225,7 @@ export default function App() {
       {showSettings && (
         <SettingsModal
           user={user}
+          activeSession={activeSession}
           onClose={() => setShowSettings(false)}
           onSave={handleSettingsSave}
         />

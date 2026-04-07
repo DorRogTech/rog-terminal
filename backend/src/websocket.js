@@ -2,6 +2,7 @@ const { WebSocketServer } = require('ws');
 const { verifyToken } = require('./auth');
 const { stmts } = require('./db');
 const { v4: uuidv4 } = require('uuid');
+const claudeApi = require('./claude-api');
 
 function setupWebSocket(server) {
   const wss = new WebSocketServer({ server, path: '/ws' });
@@ -230,6 +231,69 @@ function setupWebSocket(server) {
 
         // Broadcast to ALL in session (including sender for confirmation)
         broadcast(info.sessionId, { type: 'new_message', message: userMessage });
+
+        // If Claude API is configured for this session, send to Claude
+        if (claudeApi.isConfigured(info.sessionId)) {
+          // Get recent messages for context
+          const recentMsgs = stmts.getMessages.all(info.sessionId)
+            .slice(-20)
+            .map(m => ({ role: m.role, content: m.content }));
+
+          // Show typing indicator
+          broadcast(info.sessionId, {
+            type: 'typing',
+            user: { id: -1, displayName: 'Claude' },
+            isTyping: true,
+          });
+
+          claudeApi.sendMessage(info.sessionId, recentMsgs)
+            .then((response) => {
+              // Save Claude's response
+              const aResult = stmts.addMessage.run(info.sessionId, null, 'assistant', response, '');
+              stmts.updateSessionTime.run(info.sessionId);
+
+              const assistantMsg = {
+                id: aResult.lastInsertRowid,
+                session_id: info.sessionId,
+                user_id: null,
+                role: 'assistant',
+                content: response,
+                device_name: '',
+                display_name: 'Claude',
+                username: null,
+                created_at: new Date().toISOString(),
+              };
+
+              // Stop typing and send response
+              broadcast(info.sessionId, {
+                type: 'typing',
+                user: { id: -1, displayName: 'Claude' },
+                isTyping: false,
+              });
+              broadcast(info.sessionId, { type: 'new_message', message: assistantMsg });
+            })
+            .catch((err) => {
+              broadcast(info.sessionId, {
+                type: 'typing',
+                user: { id: -1, displayName: 'Claude' },
+                isTyping: false,
+              });
+              broadcast(info.sessionId, {
+                type: 'new_message',
+                message: {
+                  id: Date.now(),
+                  session_id: info.sessionId,
+                  user_id: null,
+                  role: 'system',
+                  content: `Error: ${err.message}`,
+                  device_name: '',
+                  display_name: 'System',
+                  username: null,
+                  created_at: new Date().toISOString(),
+                },
+              });
+            });
+        }
         break;
       }
 

@@ -9,7 +9,7 @@ const { v4: uuidv4 } = require('uuid');
 const { register, login, authMiddleware } = require('./auth');
 const { stmts } = require('./db');
 const { setupWebSocket } = require('./websocket');
-const mcpProxy = require('./mcp-proxy');
+const mcpBridge = require('./mcp-bridge');
 const claudeApi = require('./claude-api');
 
 const app = express();
@@ -121,53 +121,42 @@ app.get('/api/users', authMiddleware, (req, res) => {
   res.json({ users });
 });
 
-// === MCP Routes ===
+// === MCP Bridge Routes ===
 
 app.get('/api/mcp/status', authMiddleware, (req, res) => {
-  res.json({ connections: mcpProxy.getStatus() });
+  res.json({
+    ready: mcpBridge.isReady(),
+    tools: mcpBridge.getTools().map(t => ({ name: t.name, description: t.description })),
+  });
 });
 
-app.post('/api/mcp/connect', authMiddleware, (req, res) => {
+app.post('/api/mcp/start', authMiddleware, async (req, res) => {
   try {
-    const { sessionId, command, args } = req.body;
-    if (!sessionId || !command) {
-      return res.status(400).json({ error: 'sessionId and command are required' });
-    }
-    mcpProxy.connect(sessionId, command, args || []);
-    res.json({ ok: true, message: `MCP connected for session ${sessionId}` });
+    await mcpBridge.start();
+    res.json({ ok: true, tools: mcpBridge.getTools().length });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/mcp/disconnect', authMiddleware, (req, res) => {
-  const { sessionId } = req.body;
-  if (sessionId) {
-    mcpProxy.disconnect(sessionId);
-  } else {
-    mcpProxy.disconnectAll();
-  }
+app.post('/api/mcp/stop', authMiddleware, (req, res) => {
+  mcpBridge.stop();
   res.json({ ok: true });
-});
-
-app.post('/api/mcp/tools', authMiddleware, async (req, res) => {
-  try {
-    const { sessionId } = req.body;
-    const tools = await mcpProxy.listTools(sessionId);
-    res.json({ tools });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
 });
 
 app.post('/api/mcp/call-tool', authMiddleware, async (req, res) => {
   try {
-    const { sessionId, toolName, args } = req.body;
-    const result = await mcpProxy.callTool(sessionId, toolName, args || {});
+    const { name, args } = req.body;
+    if (!name) return res.status(400).json({ error: 'Tool name is required' });
+    const result = await mcpBridge.callTool(name, args || {});
     res.json({ result });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+app.get('/api/mcp/tools', authMiddleware, (req, res) => {
+  res.json({ tools: mcpBridge.getTools() });
 });
 
 // === Claude API Routes ===
@@ -232,12 +221,13 @@ app.get('/api/health', (req, res) => {
     status: 'ok',
     version: '1.0.0',
     name: 'Rog Terminal',
+    mcpReady: mcpBridge.isReady(),
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   });
 });
 
-// SPA fallback - serve index.html for all non-API routes
+// SPA fallback
 app.get('*', (req, res) => {
   if (!req.path.startsWith('/api')) {
     res.sendFile(path.join(frontendPath, 'index.html'), (err) => {
@@ -249,26 +239,36 @@ app.get('*', (req, res) => {
 // Setup WebSocket
 const wss = setupWebSocket(server);
 
-// Forward MCP events to WebSocket clients
-mcpProxy.on('message', ({ sessionId, message }) => {
-  if (wss.broadcastToSession) {
-    wss.broadcastToSession(sessionId, {
-      type: 'mcp_message',
-      sessionId,
-      message,
+// Forward MCP bridge events to WebSocket
+mcpBridge.on('log', (text) => {
+  if (wss.broadcastAll) {
+    wss.broadcastAll({ type: 'mcp_log', text });
+  }
+});
+
+mcpBridge.on('ready', ({ tools }) => {
+  console.log(`[MCP] Ready with ${tools.length} tools`);
+  if (wss.broadcastAll) {
+    wss.broadcastAll({
+      type: 'mcp_ready',
+      tools: tools.map(t => ({ name: t.name, description: t.description })),
     });
   }
 });
 
-mcpProxy.on('stderr', ({ sessionId, text }) => {
-  if (wss.broadcastToSession) {
-    wss.broadcastToSession(sessionId, {
-      type: 'mcp_stderr',
-      sessionId,
-      text,
-    });
+mcpBridge.on('disconnected', () => {
+  if (wss.broadcastAll) {
+    wss.broadcastAll({ type: 'mcp_disconnected' });
   }
 });
+
+// Auto-start MCP bridge on server start (local mode only)
+if (!process.env.FLY_APP_NAME) {
+  mcpBridge.start().catch((err) => {
+    console.log('[MCP] Auto-start failed (this is OK if claude is not installed):', err.message);
+    console.log('[MCP] You can start it manually via POST /api/mcp/start');
+  });
+}
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('');
@@ -279,13 +279,14 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`  API:       http://localhost:${PORT}/api`);
   console.log(`  WebSocket: ws://localhost:${PORT}/ws`);
   console.log(`  Health:    http://localhost:${PORT}/api/health`);
+  console.log(`  MCP:       ${mcpBridge.isReady() ? 'Connected' : 'Starting...'}`);
   console.log('');
 });
 
 // Graceful shutdown
 function shutdown() {
   console.log('\nShutting down...');
-  mcpProxy.disconnectAll();
+  mcpBridge.stop();
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5000);
 }

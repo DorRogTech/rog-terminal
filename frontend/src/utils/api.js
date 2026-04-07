@@ -75,4 +75,23 @@ export async function getMessages(sessionId) {
   return apiFetch(`/sessions/${sessionId}/messages`);
 }
 
+export async function configureClaude(sessionId, apiKey, model) {
+  return apiFetch('/claude/configure', {
+    method: 'POST',
+    body: JSON.stringify({ sessionId, apiKey, model }),
+  });
+}
+
+export async function getMcpStatus() {
+  return apiFetch('/mcp/status');
+}
+
+export async function startMcp() {
+  return apiFetch('/mcp/start', { method: 'POST' });
+}
+
+export async function getMcpTools() {
+  return apiFetch('/mcp/tools');
+}
+
 export { getToken, getUser, clearAuth };
