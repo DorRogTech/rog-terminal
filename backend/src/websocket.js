@@ -401,47 +401,48 @@ function setupWebSocket(server) {
         }
         const sessionId = info.sessionId;
 
-        // Try local PTY first (works on localhost)
-        if (data.type === 'terminal_open' && sharedTerminal.has(sessionId)) {
-          const history = sharedTerminal.getHistory(sessionId);
-          if (history) ws.send(JSON.stringify({ type: 'terminal_output', data: history }));
-          ws.send(JSON.stringify({ type: 'terminal_ready', sessionId }));
-          break;
-        }
-
-        if (data.type === 'terminal_open') {
-          const created = sharedTerminal.create(sessionId, { cols: data.cols || 120, rows: data.rows || 40 });
-          if (created) {
-            ws.send(JSON.stringify({ type: 'terminal_ready', sessionId }));
-            console.log(`[Terminal] Local PTY opened for session ${sessionId}`);
-            break;
-          }
-        }
-
+        // If local PTY exists for this session, use it
         if (sharedTerminal.has(sessionId)) {
-          if (data.type === 'terminal_input') sharedTerminal.write(sessionId, data.data);
-          else if (data.type === 'terminal_resize') sharedTerminal.resize(sessionId, data.cols || 120, data.rows || 40);
-          else if (data.type === 'terminal_kill') { sharedTerminal.kill(sessionId); broadcast(sessionId, { type: 'terminal_closed' }); }
+          if (data.type === 'terminal_open') {
+            const history = sharedTerminal.getHistory(sessionId);
+            if (history) ws.send(JSON.stringify({ type: 'terminal_output', data: history }));
+            ws.send(JSON.stringify({ type: 'terminal_ready', sessionId }));
+          } else if (data.type === 'terminal_input') {
+            sharedTerminal.write(sessionId, data.data);
+          } else if (data.type === 'terminal_resize') {
+            sharedTerminal.resize(sessionId, data.cols || 120, data.rows || 40);
+          } else if (data.type === 'terminal_kill') {
+            sharedTerminal.kill(sessionId);
+            broadcast(sessionId, { type: 'terminal_closed' });
+          }
           break;
         }
 
-        // No local PTY available — forward to an Agent in this session
+        // Find any connected Agent (any session)
         let agentWs = null;
         for (const [clientWs, clientInfo] of clients) {
-          if (clientInfo.sessionId === sessionId && clientInfo.deviceName?.startsWith('Agent-') && clientWs !== ws) {
+          if (clientInfo.deviceName?.startsWith('Agent-') && clientWs !== ws && clientWs.readyState === 1) {
             agentWs = clientWs;
+            // Move agent to this session
+            clientInfo.sessionId = sessionId;
             break;
           }
         }
 
-        if (agentWs && agentWs.readyState === 1) {
-          // Forward terminal command to the agent
+        if (agentWs) {
           agentWs.send(JSON.stringify(data));
-          if (data.type === 'terminal_open') {
-            console.log(`[Terminal] Forwarded to remote Agent for session ${sessionId}`);
-          }
+          console.log(`[Terminal] Forwarded ${data.type} to Agent for session ${sessionId}`);
         } else {
-          ws.send(JSON.stringify({ type: 'error', message: 'No terminal available. An Agent must be running on a machine with Claude Code.' }));
+          // Try local PTY as last resort
+          if (data.type === 'terminal_open') {
+            const created = sharedTerminal.create(sessionId, { cols: data.cols || 120, rows: data.rows || 40 });
+            if (created) {
+              ws.send(JSON.stringify({ type: 'terminal_ready', sessionId }));
+              console.log(`[Terminal] Local PTY for session ${sessionId}`);
+            } else {
+              ws.send(JSON.stringify({ type: 'error', message: 'No Agent connected. Start the Agent on your machine.' }));
+            }
+          }
         }
         break;
       }
