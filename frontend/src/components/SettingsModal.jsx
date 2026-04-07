@@ -133,33 +133,25 @@ export default function SettingsModal({ user, activeSession, onClose, onSave }) 
             )}
           </div>
 
-          {/* MCP Section */}
+          {/* MCP Section - only show on localhost */}
+          {window.location.hostname === 'localhost' && (
           <div className="settings-section">
             <h3 className="settings-section-title">MCP Bridge - Claude Code Tools</h3>
             <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px' }}>
               Connect to Claude Code MCP server for file editing, terminal, and more.
-              Requires Claude Code installed on the server machine.
             </p>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span className={`connection-badge ${mcpStatus?.ready ? 'connected' : 'disconnected'}`}>
                 {mcpStatus?.ready ? `Connected (${mcpStatus.tools?.length || 0} tools)` : 'Disconnected'}
               </span>
               {!mcpStatus?.ready && (
-                <button
-                  className="btn-secondary"
-                  style={{ padding: '6px 14px', fontSize: '12px' }}
-                  onClick={handleStartMcp}
-                >
+                <button className="btn-secondary" style={{ padding: '6px 14px', fontSize: '12px' }} onClick={handleStartMcp}>
                   Start MCP
                 </button>
               )}
             </div>
-            {mcpStatus?.tools?.length > 0 && (
-              <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-muted)' }}>
-                Tools: {mcpStatus.tools.map(t => t.name).join(', ')}
-              </div>
-            )}
           </div>
+          )}
 
           {/* Profile Section */}
           <div className="settings-section">
