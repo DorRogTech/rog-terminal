@@ -450,10 +450,30 @@ function setupWebSocket(server) {
       // Agent sends terminal output back — broadcast to all users in session
       case 'terminal_output':
       case 'terminal_ready':
-      case 'terminal_closed': {
+      case 'terminal_closed':
+      case 'projects_list':
+      case 'project_selected': {
         const info = clients.get(ws);
         if (info && info.sessionId) {
           broadcast(info.sessionId, data, ws);
+        }
+        break;
+      }
+
+      // Forward project commands to agent
+      case 'list_projects':
+      case 'select_project': {
+        let agentWs = null;
+        for (const [clientWs, clientInfo] of clients) {
+          if (clientInfo.deviceName?.startsWith('Agent-') && clientWs !== ws && clientWs.readyState === 1) {
+            agentWs = clientWs;
+            break;
+          }
+        }
+        if (agentWs) {
+          agentWs.send(JSON.stringify(data));
+        } else {
+          ws.send(JSON.stringify({ type: 'error', message: 'No Agent connected' }));
         }
         break;
       }

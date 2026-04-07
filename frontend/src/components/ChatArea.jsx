@@ -9,6 +9,7 @@ export default function ChatArea({
   onMenuClick,
   currentUser,
   onOpenTerminal,
+  onOpenProjects,
   hasActiveSession,
 }) {
   const [input, setInput] = useState('');
@@ -123,9 +124,16 @@ export default function ChatArea({
         <button className="btn-menu" onClick={onMenuClick}>&#9776;</button>
         <span style={{ fontWeight: 600, flex: 1 }}>{sessionName}</span>
         {hasActiveSession && (
-          <button className="btn-terminal" onClick={onOpenTerminal} style={{ padding: '6px 10px' }}>
-            >_
-          </button>
+          <>
+            <button className="btn-terminal" onClick={onOpenProjects} style={{ padding: '6px 10px', fontSize: '14px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+              </svg>
+            </button>
+            <button className="btn-terminal" onClick={onOpenTerminal} style={{ padding: '6px 10px' }}>
+              >_
+            </button>
+          </>
         )}
       </div>
 
@@ -133,13 +141,21 @@ export default function ChatArea({
         <div className="chat-title">{sessionName}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {hasActiveSession && (
-            <button className="btn-terminal" onClick={onOpenTerminal}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="4 17 10 11 4 5" />
-                <line x1="12" y1="19" x2="20" y2="19" />
-              </svg>
-              Terminal
-            </button>
+            <>
+              <button className="btn-terminal" onClick={onOpenProjects}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                </svg>
+                Project
+              </button>
+              <button className="btn-terminal" onClick={onOpenTerminal}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polyline points="4 17 10 11 4 5" />
+                  <line x1="12" y1="19" x2="20" y2="19" />
+                </svg>
+                Terminal
+              </button>
+            </>
           )}
           <span className="connection-badge connected">Connected</span>
         </div>

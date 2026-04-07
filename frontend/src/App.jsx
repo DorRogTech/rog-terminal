@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import SettingsModal from './components/SettingsModal';
 import SharedTerminal from './components/SharedTerminal';
+import ProjectSelector from './components/ProjectSelector';
 import { getToken, getUser, getSessions, logout } from './utils/api';
 import wsClient from './utils/websocket';
 
@@ -20,6 +21,7 @@ export default function App() {
   const [connected, setConnected] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
+  const [showProjects, setShowProjects] = useState(false);
 
   // Load sessions on mount
   useEffect(() => {
@@ -224,6 +226,7 @@ export default function App() {
         onMenuClick={() => setSidebarOpen(true)}
         currentUser={user}
         onOpenTerminal={() => setShowTerminal(true)}
+        onOpenProjects={() => setShowProjects(true)}
         hasActiveSession={!!activeSession}
       />
       {showSettings && (
@@ -233,6 +236,9 @@ export default function App() {
           onClose={() => setShowSettings(false)}
           onSave={handleSettingsSave}
         />
+      )}
+      {showProjects && (
+        <ProjectSelector onClose={() => setShowProjects(false)} />
       )}
       <SharedTerminal
         active={showTerminal && !!activeSession}

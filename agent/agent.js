@@ -57,12 +57,55 @@ if (!USERNAME || !PASSWORD) {
   process.exit(1);
 }
 
+const fs = require('fs');
+const pathModule = require('path');
+
 // --- State ---
 const claudeSessions = new Map(); // rogSessionId -> claudeSessionId
 let currentSessionId = null;
 let ws = null;
 let token = null;
 let terminalProc = null; // PTY process for shared terminal
+let currentProject = null; // Current working directory for Claude
+
+// --- Find git projects ---
+function findProjects() {
+  const home = process.env.HOME || process.env.USERPROFILE || '';
+  const projects = [];
+  try {
+    const entries = fs.readdirSync(home, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
+      const gitPath = pathModule.join(home, entry.name, '.git');
+      try {
+        if (fs.statSync(gitPath).isDirectory()) {
+          projects.push({
+            name: entry.name,
+            path: pathModule.join(home, entry.name),
+          });
+        }
+      } catch {}
+    }
+    // Also check Desktop subfolder
+    const desktopPath = pathModule.join(home, 'Desktop');
+    try {
+      const desktopEntries = fs.readdirSync(desktopPath, { withFileTypes: true });
+      for (const entry of desktopEntries) {
+        if (!entry.isDirectory()) continue;
+        const gitPath = pathModule.join(desktopPath, entry.name, '.git');
+        try {
+          if (fs.statSync(gitPath).isDirectory()) {
+            projects.push({
+              name: `Desktop/${entry.name}`,
+              path: pathModule.join(desktopPath, entry.name),
+            });
+          }
+        } catch {}
+      }
+    } catch {}
+  } catch {}
+  return projects;
+}
 
 // --- HTTP helper ---
 function apiFetch(path, options = {}) {
@@ -281,11 +324,14 @@ function connectWs() {
         const isWin = process.platform === 'win32';
         const shell = isWin ? 'cmd.exe' : '/bin/bash';
 
+        const cwd = currentProject || process.env.HOME || process.cwd();
+        console.log(`  [Terminal] CWD: ${cwd}`);
+
         terminalProc = pty.spawn(shell, [], {
           name: 'xterm-256color',
           cols: data.cols || 120,
           rows: data.rows || 40,
-          cwd: process.env.HOME || process.cwd(),
+          cwd,
           env: { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor' },
         });
 
@@ -336,6 +382,30 @@ function connectWs() {
           terminalProc = null;
         }
         ws.send(JSON.stringify({ type: 'terminal_closed' }));
+        break;
+      }
+
+      // === Project management ===
+
+      case 'list_projects': {
+        const projects = findProjects();
+        ws.send(JSON.stringify({ type: 'projects_list', projects, current: currentProject }));
+        console.log(`  [Projects] Found ${projects.length} git projects`);
+        break;
+      }
+
+      case 'select_project': {
+        const { path: projectPath } = data;
+        if (projectPath) {
+          currentProject = projectPath;
+          console.log(`  [Projects] Selected: ${projectPath}`);
+          // If terminal is running, kill it so it restarts in the new dir
+          if (terminalProc) {
+            terminalProc.kill();
+            terminalProc = null;
+          }
+          ws.send(JSON.stringify({ type: 'project_selected', path: projectPath, name: pathModule.basename(projectPath) }));
+        }
         break;
       }
 

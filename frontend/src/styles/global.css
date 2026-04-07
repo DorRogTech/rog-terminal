@@ -1066,6 +1066,49 @@ body {
   border-color: var(--accent);
 }
 
+/* === Project Selector === */
+
+.project-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--transition);
+}
+.project-item:hover {
+  background: var(--bg-tertiary);
+}
+.project-item.active {
+  background: var(--accent-glow);
+  border: 1px solid var(--border-focus);
+}
+
+.project-icon {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.project-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-name {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.project-path {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* === Desktop Only === */
 
 .desktop-only {
