@@ -741,19 +741,68 @@ body {
 }
 .btn-terminal-close:hover { color: var(--error); }
 
-.shared-terminal-body {
+/* === Rich Terminal Output (HTML-based, full RTL support) === */
+
+.rich-terminal-output {
   flex: 1;
-  padding: 4px;
-  overflow: hidden;
-  direction: ltr;
+  overflow-y: auto;
+  padding: 16px 20px;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  direction: auto;
+  unicode-bidi: plaintext;
+  cursor: text;
+  user-select: text;
 }
 
-.shared-terminal-body .xterm {
-  height: 100%;
+.rich-terminal-output * {
+  unicode-bidi: plaintext;
 }
 
-.shared-terminal-body .xterm-viewport {
-  scrollbar-width: thin;
+/* === Rich Terminal Input === */
+
+.rich-terminal-input-area {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.rich-terminal-prompt {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: bold;
+  flex-shrink: 0;
+}
+
+.rich-terminal-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  padding: 10px 14px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.rich-terminal-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.rich-terminal-input::placeholder {
+  color: var(--text-muted);
+  font-family: var(--font-hebrew);
 }
 
 /* === Terminal Toggle Button === */
