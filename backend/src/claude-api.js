@@ -25,7 +25,7 @@ class ClaudeApiClient {
   configureSession(sessionId, config) {
     this.sessionConfigs.set(sessionId, {
       apiKey: config.apiKey,
-      model: config.model || 'claude-sonnet-4-20250514',
+      model: config.model || 'claude-haiku-4-5-20251001',
       systemPrompt: config.systemPrompt || '',
       projectId: config.projectId || null,
     });
@@ -94,7 +94,10 @@ class ClaudeApiClient {
             res.on('end', () => {
               try {
                 const err = JSON.parse(errorBody);
-                reject(new Error(err.error?.message || `API error ${res.statusCode}`));
+                const msg = err.error?.message === 'Error'
+                  ? `${err.error?.type || 'error'} (${res.statusCode}) - try a different model`
+                  : err.error?.message || `API error ${res.statusCode}`;
+                reject(new Error(msg));
               } catch {
                 reject(new Error(`API error ${res.statusCode}: ${errorBody.slice(0, 200)}`));
               }
