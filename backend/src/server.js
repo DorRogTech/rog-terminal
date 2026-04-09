@@ -195,6 +195,7 @@ const CLAUDE_OAUTH = {
   CLIENT_ID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
   AUTHORIZE_URL: 'https://claude.com/cai/oauth/authorize',
   TOKEN_URL: 'https://platform.claude.com/v1/oauth/token',
+  REDIRECT_URI: 'https://platform.claude.com/oauth/code/callback',
   SCOPES: 'user:inference user:profile org:create_api_key',
 };
 
@@ -205,12 +206,10 @@ const oauthStates = new Map();
 app.post('/api/claude/oauth/start', authMiddleware, async (req, res) => {
   const crypto = require('crypto');
 
-  // PKCE: generate code_verifier and code_challenge
   const codeVerifier = crypto.randomBytes(32).toString('base64url');
   const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
   const state = crypto.randomBytes(16).toString('hex');
 
-  // Store verifier for token exchange
   oauthStates.set(state, { codeVerifier, userId: req.user.id, createdAt: Date.now() });
 
   // Clean old states (>10 min)
@@ -218,15 +217,10 @@ app.post('/api/claude/oauth/start', authMiddleware, async (req, res) => {
     if (Date.now() - v.createdAt > 600000) oauthStates.delete(k);
   }
 
-  // Build the redirect_uri - the callback on our server
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  const redirectUri = `${protocol}://${host}/api/claude/oauth/callback`;
-
   const authUrl = `${CLAUDE_OAUTH.AUTHORIZE_URL}?` +
     `client_id=${encodeURIComponent(CLAUDE_OAUTH.CLIENT_ID)}` +
     `&response_type=code` +
-    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&redirect_uri=${encodeURIComponent(CLAUDE_OAUTH.REDIRECT_URI)}` +
     `&scope=${encodeURIComponent(CLAUDE_OAUTH.SCOPES)}` +
     `&state=${state}` +
     `&code_challenge=${codeChallenge}` +
@@ -235,26 +229,24 @@ app.post('/api/claude/oauth/start', authMiddleware, async (req, res) => {
   res.json({ authUrl, state });
 });
 
-// Step 2: OAuth callback - exchange code for token
-app.get('/api/claude/oauth/callback', async (req, res) => {
-  const { code, state } = req.query;
+// Step 2: User pastes the auth code back, we exchange it for a token
+app.post('/api/claude/oauth/exchange', authMiddleware, async (req, res) => {
+  const { code, state } = req.body;
 
   if (!code || !state) {
-    return res.status(400).send('Missing code or state');
+    return res.status(400).json({ error: 'Missing code or state' });
   }
 
   const stored = oauthStates.get(state);
   if (!stored) {
-    return res.status(400).send('Invalid or expired state. Try again.');
+    return res.status(400).json({ error: 'Session expired. Click "התחבר לחשבון Claude" again.' });
+  }
+  if (stored.userId !== req.user.id) {
+    return res.status(403).json({ error: 'State mismatch' });
   }
   oauthStates.delete(state);
 
-  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-  const host = req.headers['x-forwarded-host'] || req.headers.host;
-  const redirectUri = `${protocol}://${host}/api/claude/oauth/callback`;
-
   try {
-    // Exchange code for token
     const tokenRes = await fetch(CLAUDE_OAUTH.TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -263,7 +255,7 @@ app.get('/api/claude/oauth/callback', async (req, res) => {
         client_id: CLAUDE_OAUTH.CLIENT_ID,
         code,
         code_verifier: stored.codeVerifier,
-        redirect_uri: redirectUri,
+        redirect_uri: CLAUDE_OAUTH.REDIRECT_URI,
       }),
     });
 
@@ -271,31 +263,23 @@ app.get('/api/claude/oauth/callback', async (req, res) => {
 
     if (!tokenRes.ok || !tokenData.access_token) {
       console.error('[OAuth] Token exchange failed:', tokenData);
-      return res.status(400).send(`OAuth failed: ${tokenData.error || 'unknown error'}`);
+      return res.status(400).json({ error: tokenData.error_description || tokenData.error || 'Token exchange failed' });
     }
 
     // Save the OAuth token as the user's API key
-    const apiKey = tokenData.access_token;
-    stmts.updateApiKey.run(apiKey, stored.userId);
-    console.log(`[OAuth] User ${stored.userId} authenticated with Claude OAuth`);
-
-    // Redirect back to the app with success
-    res.send(`
-      <!DOCTYPE html>
-      <html dir="rtl"><head><meta charset="utf-8"><title>Claude Connected!</title>
-      <style>body{background:#0a0e17;color:#e2e8f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-      .box{text-align:center;padding:40px}.ok{color:#22c55e;font-size:48px;margin-bottom:16px}</style></head>
-      <body><div class="box"><div class="ok">&#10003;</div><h2>Claude מחובר!</h2><p>אפשר לסגור את הדף ולחזור ל-ROG Terminal</p>
-      <script>setTimeout(()=>window.close(),2000)</script></div></body></html>
-    `);
+    stmts.updateApiKey.run(tokenData.access_token, req.user.id);
+    console.log(`[OAuth] User ${req.user.id} authenticated with Claude OAuth`);
 
     // Broadcast updated status
     if (wss.broadcastAll) {
-      wss.broadcastAll({ type: 'claude_status', cli: { ready: false }, agent: wss.isAgentConnected(), apiKey: { ready: true }, mode: process.env.FLY_APP_NAME ? 'cloud' : 'local' });
+      const agent = wss.isAgentConnected ? wss.isAgentConnected() : { connected: false };
+      wss.broadcastAll({ type: 'claude_status', agent, apiKey: { ready: true }, mode: process.env.FLY_APP_NAME ? 'cloud' : 'local' });
     }
+
+    res.json({ ok: true });
   } catch (err) {
     console.error('[OAuth] Error:', err.message);
-    res.status(500).send(`OAuth error: ${err.message}`);
+    res.status(500).json({ error: err.message });
   }
 });
 

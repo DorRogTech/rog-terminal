@@ -5,7 +5,7 @@ import ChatArea from './components/ChatArea';
 import SettingsModal from './components/SettingsModal';
 import SharedTerminal from './components/SharedTerminal';
 import ProjectSelector from './components/ProjectSelector';
-import { getToken, getUser, getSessions, logout, getClaudeStatus, startMcp, startClaudeOAuth } from './utils/api';
+import { getToken, getUser, getSessions, logout, getClaudeStatus, startMcp, startClaudeOAuth, exchangeClaudeOAuth } from './utils/api';
 import wsClient from './utils/websocket';
 
 export default function App() {
@@ -219,21 +219,22 @@ export default function App() {
 
   const handleClaudeAuth = useCallback(async () => {
     try {
-      const { authUrl } = await startClaudeOAuth();
+      const { authUrl, state } = await startClaudeOAuth();
       // Open Claude OAuth in new tab
       window.open(authUrl, '_blank');
-      // Poll for status change after user completes OAuth
-      const poll = setInterval(async () => {
+      // Wait for user to come back with the code
+      // Use a small delay then prompt
+      setTimeout(async () => {
+        const code = prompt('הדבק את הקוד מ-Claude כאן:');
+        if (!code || !code.trim()) return;
         try {
+          await exchangeClaudeOAuth(code.trim(), state);
           const status = await getClaudeStatus();
-          if (status.apiKey?.ready || status.cli?.ready || status.agent?.connected) {
-            clearInterval(poll);
-            setClaudeStatus({ ...status, checking: false });
-          }
-        } catch {}
-      }, 3000);
-      // Stop polling after 2 minutes
-      setTimeout(() => clearInterval(poll), 120000);
+          setClaudeStatus({ ...status, checking: false });
+        } catch (err) {
+          alert('שגיאה: ' + (err.message || 'נכשל'));
+        }
+      }, 2000);
     } catch (err) {
       console.error('OAuth start failed:', err);
     }
