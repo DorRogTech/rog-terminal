@@ -268,7 +268,7 @@ function setupWebSocket(server) {
             break;
           }
 
-          console.log(`[Chat] User "${user.displayName}" sent: "${content.slice(0, 80)}..." -> calling Claude CLI`);
+          console.log(`[Chat] User "${user.displayName}" sent: "${content.slice(0, 80)}..." -> calling Claude`);
 
           // Show typing indicator
           broadcast(sessionId, {
@@ -277,24 +277,38 @@ function setupWebSocket(server) {
             isTyping: true,
           });
 
-          // Try Claude CLI first (uses server's Claude subscription)
-          // Falls back to user's personal API key if CLI fails
-          let responsePromise = claudeCli.sendMessage(sessionId, content)
-            .then(r => r.text)
-            .catch((cliErr) => {
-              console.log(`[Chat] CLI failed: ${cliErr.message}, trying user API key...`);
-              // Fallback: check if the user has their own API key
-              const dbUser = stmts.getUserById.get(user.id);
-              if (dbUser && dbUser.claude_api_key) {
-                // Use user's API key / OAuth token
-                claudeApi.configureSession(sessionId, { apiKey: dbUser.claude_api_key });
-                const recentMsgs = stmts.getMessages.all(sessionId)
-                  .slice(-20)
-                  .map(m => ({ role: m.role, content: m.content }));
-                return claudeApi.sendMessage(sessionId, recentMsgs);
-              }
-              throw new Error('Claude CLI not available and no API key configured. Add your API key in Settings.');
-            });
+          const isCloud = !!process.env.FLY_APP_NAME;
+          let responsePromise;
+
+          if (isCloud) {
+            // Cloud mode: use user's API key directly (no CLI available)
+            const dbUser = stmts.getUserById.get(user.id);
+            if (dbUser && dbUser.claude_api_key) {
+              claudeApi.configureSession(sessionId, { apiKey: dbUser.claude_api_key });
+              const recentMsgs = stmts.getMessages.all(sessionId)
+                .slice(-20)
+                .map(m => ({ role: m.role, content: m.content }));
+              responsePromise = claudeApi.sendMessage(sessionId, recentMsgs);
+            } else {
+              responsePromise = Promise.reject(new Error('התחבר לחשבון Claude בהגדרות'));
+            }
+          } else {
+            // Local mode: try Claude CLI first, fall back to user's API key
+            responsePromise = claudeCli.sendMessage(sessionId, content)
+              .then(r => r.text)
+              .catch((cliErr) => {
+                console.log(`[Chat] CLI failed: ${cliErr.message}, trying user API key...`);
+                const dbUser = stmts.getUserById.get(user.id);
+                if (dbUser && dbUser.claude_api_key) {
+                  claudeApi.configureSession(sessionId, { apiKey: dbUser.claude_api_key });
+                  const recentMsgs = stmts.getMessages.all(sessionId)
+                    .slice(-20)
+                    .map(m => ({ role: m.role, content: m.content }));
+                  return claudeApi.sendMessage(sessionId, recentMsgs);
+                }
+                throw new Error('Claude CLI not available and no API key configured. Add your API key in Settings.');
+              });
+          }
 
           responsePromise
             .then((response) => {

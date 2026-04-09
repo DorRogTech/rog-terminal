@@ -246,6 +246,7 @@ export default function App() {
       setClaudeStatus({ ...status, checking: false });
     } catch (err) {
       alert(err.message || 'שגיאה');
+      setOauthPending(null);
     }
   }, [oauthPending]);
 

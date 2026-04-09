@@ -79,12 +79,11 @@ class ClaudeApiClient {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            // OAuth tokens use Bearer auth, API keys use x-api-key
+            // API keys use x-api-key, OAuth tokens use Bearer + beta header
             ...(config.apiKey.startsWith('sk-')
               ? { 'x-api-key': config.apiKey }
-              : { 'Authorization': `Bearer ${config.apiKey}` }),
+              : { 'Authorization': `Bearer ${config.apiKey}`, 'anthropic-beta': 'oauth-2025-04-20' }),
             'anthropic-version': '2023-06-01',
-            'anthropic-beta': 'oauth-2025-04-20',
             'Content-Length': Buffer.byteLength(bodyStr),
           },
         },
