@@ -94,6 +94,11 @@ function setupWebSocket(server) {
 
     stmts.updateLastSeen.run(deviceName, user.id);
 
+    // Notify all clients when an Agent connects
+    if (deviceName.startsWith('Agent-')) {
+      broadcastAll({ type: 'agent_status', connected: true, deviceName, user: user.displayName });
+    }
+
     ws.on('pong', () => {
       const info = clients.get(ws);
       if (info) info.isAlive = true;
@@ -124,6 +129,10 @@ function setupWebSocket(server) {
           const onlineUsers = getOnlineUsers(info.sessionId);
           broadcast(info.sessionId, { type: 'online_users', users: onlineUsers });
         }, 100);
+      }
+      // Notify all clients when an Agent disconnects
+      if (info?.deviceName?.startsWith('Agent-')) {
+        broadcastAll({ type: 'agent_status', connected: false, deviceName: info.deviceName });
       }
       clients.delete(ws);
     });
@@ -492,10 +501,21 @@ function setupWebSocket(server) {
     broadcast(sessionId, { type: 'terminal_closed' });
   });
 
-  // Expose broadcast function for external use (MCP proxy)
+  // Check if any Agent is connected
+  function isAgentConnected() {
+    for (const [ws, info] of clients) {
+      if (info.deviceName?.startsWith('Agent-') && ws.readyState === 1) {
+        return { connected: true, deviceName: info.deviceName, user: info.user.displayName };
+      }
+    }
+    return { connected: false };
+  }
+
+  // Expose functions for external use
   wss.broadcastToSession = broadcast;
   wss.broadcastAll = broadcastAll;
   wss.getOnlineUsers = getOnlineUsers;
+  wss.isAgentConnected = isAgentConnected;
 
   return wss;
 }

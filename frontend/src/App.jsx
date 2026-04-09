@@ -22,7 +22,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
-  const [claudeStatus, setClaudeStatus] = useState({ cli: { ready: false }, mcp: { ready: false, tools: 0 }, checking: true });
+  const [claudeStatus, setClaudeStatus] = useState({ cli: { ready: false }, agent: { connected: false }, checking: true });
 
   // Load sessions on mount
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function App() {
     if (!token) return;
     getClaudeStatus()
       .then((s) => setClaudeStatus({ ...s, checking: false }))
-      .catch(() => setClaudeStatus({ cli: { ready: false }, mcp: { ready: false, tools: 0 }, checking: false }));
+      .catch(() => setClaudeStatus({ cli: { ready: false }, agent: { connected: false }, checking: false }));
   }, [token]);
 
   // WebSocket connection
@@ -125,7 +125,11 @@ export default function App() {
       }),
 
       wsClient.on('claude_status', (data) => {
-        setClaudeStatus({ cli: data.cli, mcp: data.mcp, checking: false });
+        setClaudeStatus({ ...data, checking: false });
+      }),
+
+      wsClient.on('agent_status', (data) => {
+        setClaudeStatus(prev => ({ ...prev, agent: { connected: data.connected, deviceName: data.deviceName, user: data.user } }));
       }),
 
       wsClient.on('mcp_message', (data) => {
@@ -209,7 +213,7 @@ export default function App() {
       const status = await getClaudeStatus();
       setClaudeStatus({ ...status, checking: false });
     } catch (err) {
-      setClaudeStatus({ cli: { ready: false }, mcp: { ready: false, tools: 0 }, checking: false });
+      setClaudeStatus(prev => ({ ...prev, checking: false }));
     }
   }, []);
 

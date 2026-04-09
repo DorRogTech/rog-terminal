@@ -124,31 +124,31 @@ app.get('/api/users', authMiddleware, (req, res) => {
 
 // === Claude Connection Status ===
 
-// Check Claude connection - CLI locally, API key on cloud
+// Check Claude connection - CLI locally, Agent on cloud
 app.get('/api/claude/status', authMiddleware, async (req, res) => {
   try {
     const isCloud = !!process.env.FLY_APP_NAME;
+    const agent = wss.isAgentConnected ? wss.isAgentConnected() : { connected: false };
     if (isCloud) {
-      // On cloud: check if user has an API key configured
+      // On cloud: check if Agent is connected (Agent = local Claude via MCP)
       const dbUser = stmts.getUserById.get(req.user.id);
       const hasApiKey = !!(dbUser?.claude_api_key);
       res.json({
-        cli: { ready: false },
+        agent,
         apiKey: { ready: hasApiKey },
         mode: 'cloud',
       });
     } else {
-      // Local: check CLI + MCP
+      // Local: check CLI + Agent
       const cliAvailable = await claudeCli.isAvailable();
-      const mcpPing = await mcpBridge.ping();
       res.json({
         cli: { ready: cliAvailable },
-        mcp: { ready: mcpPing.ok, tools: mcpPing.ok ? mcpBridge.getTools().map(t => ({ name: t.name, description: t.description })) : [], error: mcpPing.error || null },
+        agent,
         mode: 'local',
       });
     }
   } catch (err) {
-    res.json({ cli: { ready: false }, apiKey: { ready: false }, mode: process.env.FLY_APP_NAME ? 'cloud' : 'local' });
+    res.json({ cli: { ready: false }, agent: { connected: false }, mode: process.env.FLY_APP_NAME ? 'cloud' : 'local' });
   }
 });
 

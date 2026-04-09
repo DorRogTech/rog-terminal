@@ -94,10 +94,14 @@ export default function Sidebar({
         {/* Claude Connection Status */}
         {claudeStatus && !claudeStatus.checking && (() => {
           const isCloud = claudeStatus.mode === 'cloud';
-          const isConnected = isCloud ? claudeStatus.apiKey?.ready : claudeStatus.cli?.ready;
-          const statusClass = claudeStatus.checking ? 'checking' : isConnected ? 'connected' : 'disconnected';
-          const label = claudeStatus.checking ? 'בודק חיבור...'
-            : isConnected ? 'Claude מחובר'
+          const agentOk = claudeStatus.agent?.connected;
+          const cliOk = claudeStatus.cli?.ready;
+          // Connected if: agent connected OR (local mode + CLI available)
+          const isConnected = agentOk || (!isCloud && cliOk);
+          const statusClass = isConnected ? 'connected' : 'disconnected';
+          const label = agentOk
+            ? `Claude Agent מחובר (${claudeStatus.agent.deviceName || 'local'})`
+            : cliOk ? 'Claude CLI מחובר'
             : 'Claude מנותק';
           return (
             <div className="mcp-status-bar">
@@ -113,10 +117,10 @@ export default function Sidebar({
                   {isCloud ? (
                     <button
                       className="mcp-auth-link"
-                      onClick={onOpenSettings}
-                      title="הגדר API Key בהגדרות"
+                      onClick={onClaudeAuth}
+                      title="פותח דפדפן להתחברות לחשבון Claude"
                     >
-                      הגדר API Key
+                      התחבר ל-Claude
                     </button>
                   ) : (
                     <button
