@@ -17,8 +17,12 @@ export default function Sidebar({
   claudeStatus,
   onReconnectClaude,
   onClaudeAuth,
+  oauthPending,
+  onOAuthCode,
+  onOAuthCancel,
 }) {
   const [contextMenu, setContextMenu] = useState(null);
+  const [oauthCode, setOauthCode] = useState('');
 
   function formatTime(dateStr) {
     const d = new Date(dateStr);
@@ -119,13 +123,45 @@ export default function Sidebar({
                 <span className={`mcp-dot ${statusClass}`} />
                 <span className="mcp-label">{label}</span>
               </div>
-              {!isConnected && (
+              {!isConnected && !oauthPending && (
                 <div className="mcp-actions">
                   <button className="mcp-auth-link" onClick={onClaudeAuth}>
                     התחבר לחשבון Claude
                   </button>
                   <button className="mcp-reconnect-btn" onClick={onReconnectClaude}>
                     בדוק שוב
+                  </button>
+                </div>
+              )}
+              {oauthPending && (
+                <div className="oauth-code-input">
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '6px' }}>
+                    התחבר ב-Claude והדבק את הקוד:
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <input
+                      className="form-input"
+                      style={{ flex: 1, padding: '6px 8px', fontSize: '12px', direction: 'ltr' }}
+                      placeholder="הדבק קוד כאן..."
+                      value={oauthCode}
+                      onChange={(e) => setOauthCode(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter' && oauthCode.trim()) { onOAuthCode(oauthCode); setOauthCode(''); } }}
+                      autoFocus
+                    />
+                    <button
+                      className="mcp-auth-link"
+                      style={{ padding: '6px 10px', whiteSpace: 'nowrap' }}
+                      onClick={() => { onOAuthCode(oauthCode); setOauthCode(''); }}
+                      disabled={!oauthCode.trim()}
+                    >
+                      שלח
+                    </button>
+                  </div>
+                  <button
+                    style={{ background: 'none', border: 'none', color: 'var(--text-muted)', fontSize: '10px', cursor: 'pointer', marginTop: '4px', padding: 0 }}
+                    onClick={onOAuthCancel}
+                  >
+                    ביטול
                   </button>
                 </div>
               )}

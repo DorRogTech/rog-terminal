@@ -217,28 +217,29 @@ export default function App() {
     }
   }, []);
 
+  const [oauthPending, setOauthPending] = useState(null); // { state }
+
   const handleClaudeAuth = useCallback(async () => {
     try {
       const { authUrl, state } = await startClaudeOAuth();
-      // Open Claude OAuth in new tab
+      setOauthPending({ state });
       window.open(authUrl, '_blank');
-      // Wait for user to come back with the code
-      // Use a small delay then prompt
-      setTimeout(async () => {
-        const code = prompt('הדבק את הקוד מ-Claude כאן:');
-        if (!code || !code.trim()) return;
-        try {
-          await exchangeClaudeOAuth(code.trim(), state);
-          const status = await getClaudeStatus();
-          setClaudeStatus({ ...status, checking: false });
-        } catch (err) {
-          alert('שגיאה: ' + (err.message || 'נכשל'));
-        }
-      }, 2000);
     } catch (err) {
       console.error('OAuth start failed:', err);
     }
   }, []);
+
+  const handleOAuthCode = useCallback(async (code) => {
+    if (!oauthPending || !code.trim()) return;
+    try {
+      await exchangeClaudeOAuth(code.trim(), oauthPending.state);
+      setOauthPending(null);
+      const status = await getClaudeStatus();
+      setClaudeStatus({ ...status, checking: false });
+    } catch (err) {
+      alert(err.message || 'שגיאה');
+    }
+  }, [oauthPending]);
 
   const handleSettingsSave = useCallback((settings) => {
     // Settings are saved to localStorage by the modal
@@ -270,6 +271,9 @@ export default function App() {
         claudeStatus={claudeStatus}
         onReconnectClaude={handleReconnectClaude}
         onClaudeAuth={handleClaudeAuth}
+        oauthPending={oauthPending}
+        onOAuthCode={handleOAuthCode}
+        onOAuthCancel={() => setOauthPending(null)}
       />
       <ChatArea
         messages={messages}
