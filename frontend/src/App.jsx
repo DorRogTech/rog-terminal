@@ -231,12 +231,14 @@ export default function App() {
 
   const handleOAuthCode = useCallback(async (rawCode) => {
     if (!oauthPending || !rawCode.trim()) return;
-    // User might paste URL like "https://...?code=ABC123" or just the code
+    // Clean up the code - remove URL fragments, extract from URL
     let code = rawCode.trim();
     try {
       const url = new URL(code);
       code = url.searchParams.get('code') || code;
     } catch {}
+    // Remove #fragment (Claude appends #state to the code)
+    code = code.split('#')[0].trim();
     try {
       await exchangeClaudeOAuth(code, oauthPending.state);
       setOauthPending(null);
