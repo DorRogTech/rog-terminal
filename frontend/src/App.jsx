@@ -229,10 +229,16 @@ export default function App() {
     }
   }, []);
 
-  const handleOAuthCode = useCallback(async (code) => {
-    if (!oauthPending || !code.trim()) return;
+  const handleOAuthCode = useCallback(async (rawCode) => {
+    if (!oauthPending || !rawCode.trim()) return;
+    // User might paste URL like "https://...?code=ABC123" or just the code
+    let code = rawCode.trim();
     try {
-      await exchangeClaudeOAuth(code.trim(), oauthPending.state);
+      const url = new URL(code);
+      code = url.searchParams.get('code') || code;
+    } catch {}
+    try {
+      await exchangeClaudeOAuth(code, oauthPending.state);
       setOauthPending(null);
       const status = await getClaudeStatus();
       setClaudeStatus({ ...status, checking: false });

@@ -247,23 +247,28 @@ app.post('/api/claude/oauth/exchange', authMiddleware, async (req, res) => {
   oauthStates.delete(state);
 
   try {
+    const tokenBody = {
+      grant_type: 'authorization_code',
+      client_id: CLAUDE_OAUTH.CLIENT_ID,
+      code,
+      code_verifier: stored.codeVerifier,
+      redirect_uri: CLAUDE_OAUTH.REDIRECT_URI,
+      state,
+    };
+    console.log('[OAuth] Token request:', { ...tokenBody, code_verifier: '***' });
+
     const tokenRes = await fetch(CLAUDE_OAUTH.TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        grant_type: 'authorization_code',
-        client_id: CLAUDE_OAUTH.CLIENT_ID,
-        code,
-        code_verifier: stored.codeVerifier,
-        redirect_uri: CLAUDE_OAUTH.REDIRECT_URI,
-      }),
+      body: JSON.stringify(tokenBody),
     });
 
     const tokenData = await tokenRes.json();
+    console.log('[OAuth] Token response:', tokenRes.status, JSON.stringify(tokenData).slice(0, 300));
 
     if (!tokenRes.ok || !tokenData.access_token) {
-      console.error('[OAuth] Token exchange failed:', tokenData);
-      return res.status(400).json({ error: tokenData.error_description || tokenData.error || 'Token exchange failed' });
+      const errMsg = tokenData.error?.message || tokenData.error_description || JSON.stringify(tokenData.error) || 'Token exchange failed';
+      return res.status(400).json({ error: errMsg });
     }
 
     // Save the OAuth token as the user's API key
