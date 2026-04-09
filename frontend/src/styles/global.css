@@ -1493,6 +1493,76 @@ body {
 
 /* === Terminal Mobile Input Bar === */
 
+/* === Terminal Agent Error Overlay === */
+
+.terminal-agent-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 40px 24px;
+  text-align: center;
+  background: var(--bg-primary);
+  direction: rtl;
+}
+
+.terminal-agent-error-icon {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.terminal-agent-error-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-hebrew);
+}
+
+.terminal-agent-error-text {
+  font-size: 14px;
+  color: var(--text-secondary);
+  font-family: var(--font-hebrew);
+  max-width: 400px;
+  line-height: 1.6;
+}
+
+.terminal-agent-error-cmd {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--accent);
+  word-break: break-all;
+  max-width: 100%;
+  text-align: left;
+}
+
+.terminal-agent-error-retry {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 12px 32px;
+  font-size: 15px;
+  font-weight: 600;
+  font-family: var(--font-hebrew);
+  cursor: pointer;
+  min-height: 44px;
+  transition: background var(--transition);
+}
+
+.terminal-agent-error-retry:hover {
+  background: var(--accent-hover);
+}
+
+.terminal-dot.yellow {
+  background: var(--warning);
+}
+
 /* === Mobile Terminal Input === */
 
 .terminal-mobile-input-area {

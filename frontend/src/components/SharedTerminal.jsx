@@ -12,6 +12,7 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
   const [ready, setReady] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const [mobileInput, setMobileInput] = useState('');
+  const [agentError, setAgentError] = useState(null);
   const mobileInputRef = useRef(null);
 
   // Mobile detection
@@ -27,6 +28,9 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
   // Initialize xterm.js when terminal becomes active
   useEffect(() => {
     if (!active || !terminalRef.current) return;
+
+    setAgentError(null);
+    setReady(false);
 
     const term = new Terminal({
       cursorBlink: true,
@@ -58,7 +62,6 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       scrollback: 5000,
       convertEol: false,
       allowProposedApi: true,
-      // Mobile: disable built-in keyboard handling, use our input
       disableStdin: isMobile,
     });
 
@@ -68,9 +71,8 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
 
     term.open(terminalRef.current);
 
-    // Fit to container — needs a small delay for DOM to settle
     setTimeout(() => {
-      try { fitAddon.fit(); } catch (e) { console.warn('fit error:', e); }
+      try { fitAddon.fit(); } catch {}
     }, 100);
 
     xtermRef.current = term;
@@ -91,8 +93,8 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       if (msg.data) term.write(msg.data);
     });
     const unsubReady = wsClient.on('terminal_ready', () => {
-      console.log('[SharedTerminal] terminal_ready received');
       setReady(true);
+      setAgentError(null);
       if (isMobile) {
         mobileInputRef.current?.focus();
       } else {
@@ -104,11 +106,17 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       setReady(false);
     });
 
-    // Send terminal_open after a brief delay to ensure xterm is ready
+    // Listen for error (Agent not connected)
+    const unsubError = wsClient.on('error', (msg) => {
+      if (msg.message && msg.message.includes('Agent')) {
+        setAgentError(msg.message);
+      }
+    });
+
+    // Send terminal_open after xterm is ready
     setTimeout(() => {
       const cols = isMobile ? 80 : term.cols || 120;
       const rows = isMobile ? 24 : term.rows || 40;
-      console.log('[SharedTerminal] Sending terminal_open', { cols, rows });
       wsClient.send({ type: 'terminal_open', cols, rows });
     }, 200);
 
@@ -116,13 +124,11 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
     function handleResize() {
       try {
         fitAddon.fit();
-        // Notify server of new size
         wsClient.send({ type: 'terminal_resize', cols: term.cols, rows: term.rows });
       } catch {}
     }
     window.addEventListener('resize', handleResize);
 
-    // Handle visualViewport resize (mobile keyboard)
     const vv = window.visualViewport;
     function handleVvResize() {
       try { fitAddon.fit(); } catch {}
@@ -134,6 +140,7 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       unsubHistory();
       unsubReady();
       unsubClosed();
+      unsubError();
       window.removeEventListener('resize', handleResize);
       if (vv) vv.removeEventListener('resize', handleVvResize);
       term.dispose();
@@ -141,6 +148,14 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       fitAddonRef.current = null;
     };
   }, [active, isMobile]);
+
+  // Retry connecting terminal
+  function retryConnect() {
+    setAgentError(null);
+    const cols = isMobile ? 80 : 120;
+    const rows = isMobile ? 24 : 40;
+    wsClient.send({ type: 'terminal_open', cols, rows });
+  }
 
   // Mobile input handlers
   const handleMobileSend = useCallback(() => {
@@ -171,28 +186,52 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
         {/* Header */}
         <div className="shared-terminal-header">
           <div className="shared-terminal-title">
-            <span className={`terminal-dot ${ready ? 'green' : 'red'}`} />
+            <span className={`terminal-dot ${ready ? 'green' : agentError ? 'red' : 'yellow'}`} />
             {isMobile ? (currentProjectName || 'Terminal') : `Claude Code — ${currentProjectName || 'Shared Terminal'}`}
           </div>
           <div className="shared-terminal-actions">
             {!isMobile && (
               <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                {ready ? 'Connected' : 'Connecting...'}
+                {ready ? 'Connected' : agentError ? 'Agent Disconnected' : 'Connecting...'}
               </span>
             )}
             <button className="btn-terminal-close" onClick={onClose}>&times;</button>
           </div>
         </div>
 
+        {/* Agent disconnected overlay */}
+        {agentError && (
+          <div className="terminal-agent-error">
+            <div className="terminal-agent-error-icon">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                <line x1="8" y1="21" x2="16" y2="21"/>
+                <line x1="12" y1="17" x2="12" y2="21"/>
+              </svg>
+            </div>
+            <div className="terminal-agent-error-title">Agent לא מחובר</div>
+            <div className="terminal-agent-error-text">
+              כדי להשתמש בטרמינל, צריך להפעיל את ה-Agent על המחשב:
+            </div>
+            <div className="terminal-agent-error-cmd" dir="ltr">
+              node agent/agent.js --server https://rog-terminal.fly.dev --user YOUR_USER --pass YOUR_PASS
+            </div>
+            <button className="terminal-agent-error-retry" onClick={retryConnect}>
+              נסה שוב
+            </button>
+          </div>
+        )}
+
         {/* xterm.js terminal */}
         <div
           className="xterm-container"
           ref={terminalRef}
           onClick={() => !isMobile && xtermRef.current?.focus()}
+          style={{ display: agentError ? 'none' : undefined }}
         />
 
         {/* Mobile: input area with quick keys */}
-        {isMobile && (
+        {isMobile && !agentError && (
           <div className="terminal-mobile-input-area">
             <div className="terminal-mobile-quick-actions">
               {[
@@ -235,7 +274,7 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
                 autoCorrect="off"
                 autoCapitalize="off"
                 spellCheck={false}
-                dir="ltr"
+                dir="auto"
               />
               <button
                 className="terminal-mobile-send-btn"
@@ -250,7 +289,7 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
         )}
 
         {/* Status bar */}
-        {!isMobile && (
+        {!isMobile && !agentError && (
           <div className="rich-terminal-status-bar">
             <span>{currentProjectName || 'No project'} — Click to type</span>
             <span>{ready ? 'Ctrl+C to cancel' : 'Connecting...'}</span>
