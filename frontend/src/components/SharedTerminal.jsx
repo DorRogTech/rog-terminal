@@ -68,10 +68,10 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
 
     term.open(terminalRef.current);
 
-    // Fit to container
-    requestAnimationFrame(() => {
-      try { fitAddon.fit(); } catch {}
-    });
+    // Fit to container — needs a small delay for DOM to settle
+    setTimeout(() => {
+      try { fitAddon.fit(); } catch (e) { console.warn('fit error:', e); }
+    }, 100);
 
     xtermRef.current = term;
     fitAddonRef.current = fitAddon;
@@ -85,12 +85,13 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
 
     // Receive output from server
     const unsubOutput = wsClient.on('terminal_output', (msg) => {
-      term.write(msg.data);
+      if (msg.data) term.write(msg.data);
     });
     const unsubHistory = wsClient.on('terminal_history', (msg) => {
-      term.write(msg.data);
+      if (msg.data) term.write(msg.data);
     });
     const unsubReady = wsClient.on('terminal_ready', () => {
+      console.log('[SharedTerminal] terminal_ready received');
       setReady(true);
       if (isMobile) {
         mobileInputRef.current?.focus();
@@ -103,10 +104,13 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       setReady(false);
     });
 
-    // Send terminal_open with proper size
-    const cols = isMobile ? 80 : term.cols || 120;
-    const rows = isMobile ? 24 : term.rows || 40;
-    wsClient.send({ type: 'terminal_open', cols, rows });
+    // Send terminal_open after a brief delay to ensure xterm is ready
+    setTimeout(() => {
+      const cols = isMobile ? 80 : term.cols || 120;
+      const rows = isMobile ? 24 : term.rows || 40;
+      console.log('[SharedTerminal] Sending terminal_open', { cols, rows });
+      wsClient.send({ type: 'terminal_open', cols, rows });
+    }, 200);
 
     // Handle window resize
     function handleResize() {
