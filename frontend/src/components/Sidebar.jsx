@@ -17,6 +17,7 @@ export default function Sidebar({
   claudeStatus,
   onReconnectClaude,
   onClaudeAuth,
+  onClaudeDisconnect,
   oauthPending,
   onOAuthCode,
   onOAuthCancel,
@@ -123,6 +124,13 @@ export default function Sidebar({
                 <span className={`mcp-dot ${statusClass}`} />
                 <span className="mcp-label">{label}</span>
               </div>
+              {isConnected && (
+                <div className="mcp-actions">
+                  <button className="mcp-reconnect-btn" onClick={onClaudeDisconnect}>
+                    התנתק מ-Claude
+                  </button>
+                </div>
+              )}
               {!isConnected && !oauthPending && (
                 <div className="mcp-actions">
                   <button className="mcp-auth-link" onClick={onClaudeAuth}>

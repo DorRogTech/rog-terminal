@@ -5,7 +5,7 @@ import ChatArea from './components/ChatArea';
 import SettingsModal from './components/SettingsModal';
 import SharedTerminal from './components/SharedTerminal';
 import ProjectSelector from './components/ProjectSelector';
-import { getToken, getUser, getSessions, logout, getClaudeStatus, startMcp, startClaudeOAuth, exchangeClaudeOAuth } from './utils/api';
+import { getToken, getUser, getSessions, logout, getClaudeStatus, startMcp, startClaudeOAuth, exchangeClaudeOAuth, disconnectClaude } from './utils/api';
 import wsClient from './utils/websocket';
 
 export default function App() {
@@ -250,6 +250,15 @@ export default function App() {
     }
   }, [oauthPending]);
 
+  const handleClaudeDisconnect = useCallback(async () => {
+    try {
+      await disconnectClaude();
+      setClaudeStatus(prev => ({ ...prev, apiKey: { ready: false } }));
+    } catch (err) {
+      console.error('Disconnect failed:', err);
+    }
+  }, []);
+
   const handleSettingsSave = useCallback((settings) => {
     // Settings are saved to localStorage by the modal
     console.log('Settings saved:', settings);
@@ -280,6 +289,7 @@ export default function App() {
         claudeStatus={claudeStatus}
         onReconnectClaude={handleReconnectClaude}
         onClaudeAuth={handleClaudeAuth}
+        onClaudeDisconnect={handleClaudeDisconnect}
         oauthPending={oauthPending}
         onOAuthCode={handleOAuthCode}
         onOAuthCancel={() => setOauthPending(null)}

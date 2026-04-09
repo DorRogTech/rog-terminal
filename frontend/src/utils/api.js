@@ -109,6 +109,10 @@ export async function startClaudeOAuth() {
   return apiFetch('/claude/oauth/start', { method: 'POST' });
 }
 
+export async function disconnectClaude() {
+  return apiFetch('/claude/disconnect', { method: 'POST' });
+}
+
 export async function exchangeClaudeOAuth(code, state) {
   return apiFetch('/claude/oauth/exchange', {
     method: 'POST',

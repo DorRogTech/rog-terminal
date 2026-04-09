@@ -308,6 +308,16 @@ app.get('/api/mcp/tools', authMiddleware, (req, res) => {
   res.json({ tools: mcpBridge.getTools() });
 });
 
+// Disconnect Claude - clear API key
+app.post('/api/claude/disconnect', authMiddleware, (req, res) => {
+  stmts.updateApiKey.run('', req.user.id);
+  res.json({ ok: true });
+  if (wss.broadcastAll) {
+    const agent = wss.isAgentConnected ? wss.isAgentConnected() : { connected: false };
+    wss.broadcastAll({ type: 'claude_status', agent, apiKey: { ready: false }, mode: process.env.FLY_APP_NAME ? 'cloud' : 'local' });
+  }
+});
+
 // === Claude API Routes ===
 
 app.post('/api/claude/configure', authMiddleware, (req, res) => {
