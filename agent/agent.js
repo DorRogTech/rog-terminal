@@ -63,6 +63,7 @@ const pathModule = require('path');
 // --- State ---
 const claudeSessions = new Map(); // rogSessionId -> claudeSessionId
 let currentSessionId = null;
+let lastProcessedMsgId = null;
 let ws = null;
 let token = null;
 let terminalProc = null; // PTY process for shared terminal
@@ -154,7 +155,9 @@ async function askClaude(rogSessionId, message) {
     proc.stderr.on('data', (c) => stderr += c);
 
     proc.on('exit', (code) => {
+      if (stderr.trim()) console.log(`  [claude stderr] ${stderr.trim().slice(0, 200)}`);
       if (code !== 0) {
+        console.log(`  [claude exit] code=${code}, stderr=${stderr.slice(0, 200)}`);
         reject(new Error(stderr.trim() || `claude exit code ${code}`));
         return;
       }
@@ -267,8 +270,11 @@ function connectWs() {
         if (msg.role !== 'user') break;
         // Don't respond to our own messages
         if (msg.device_name && msg.device_name.startsWith('Agent-')) break;
+        // Dedup: skip if already processing this message
+        if (msg.id === lastProcessedMsgId) break;
+        lastProcessedMsgId = msg.id;
 
-        console.log(`  [${msg.display_name}] ${msg.content.slice(0, 60)}...`);
+        console.log(`  [${msg.display_name}] ${msg.content.slice(0, 60)}`);
 
         // Show typing
         ws.send(JSON.stringify({
@@ -278,8 +284,10 @@ function connectWs() {
         }));
 
         try {
-          const response = await askClaude(currentSessionId, msg.content);
-          console.log(`  [Claude] ${response.slice(0, 60)}...`);
+          const sid = currentSessionId || msg.session_id;
+          console.log(`  [askClaude] sid=${sid}`);
+          const response = await askClaude(sid, msg.content);
+          console.log(`  [Claude] ${response.slice(0, 60)}`);
 
           // Send response as system message
           ws.send(JSON.stringify({
@@ -289,6 +297,7 @@ function connectWs() {
           }));
         } catch (err) {
           console.error(`  [Error] ${err.message}`);
+          console.error(`  [Stack] ${err.stack}`);
           ws.send(JSON.stringify({
             type: 'system_message',
             role: 'system',

@@ -174,8 +174,16 @@ export function ansiToHtml(raw) {
       continue;
     }
 
-    // Carriage return
+    // Carriage return - overwrite current line (for progress indicators)
     if (ch === '\r') {
+      // Close any open style span before resetting
+      if (currentStyle) {
+        currentLine = '';
+        // Re-open the span with current style
+        currentLine = openSpan(currentStyle);
+      } else {
+        currentLine = '';
+      }
       i++;
       continue;
     }
@@ -201,8 +209,21 @@ export function ansiToHtml(raw) {
     startIdx++;
   }
 
-  return lines
-    .slice(startIdx)
-    .map(line => `<div class="term-line" dir="auto">${line || '&nbsp;'}</div>`)
+  // Collapse consecutive empty lines (max 2 in a row)
+  const collapsed = [];
+  let emptyCount = 0;
+  for (let k = startIdx; k < lines.length; k++) {
+    const isEmptyLine = lines[k].replace(/<[^>]*>/g, '').trim() === '';
+    if (isEmptyLine) {
+      emptyCount++;
+      if (emptyCount <= 2) collapsed.push(lines[k]);
+    } else {
+      emptyCount = 0;
+      collapsed.push(lines[k]);
+    }
+  }
+
+  return collapsed
+    .map(line => `<div class="term-line">${line || '&nbsp;'}</div>`)
     .join('');
 }

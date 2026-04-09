@@ -19,7 +19,7 @@
   --user-msg-bg: #1a2744;
   --assistant-msg-bg: #111827;
   --online-dot: #22c55e;
-  --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+  --font-mono: 'IBM Plex Mono', 'Courier New', 'Miriam Mono CLM', monospace;
   --font-hebrew: 'IBM Plex Sans Hebrew', 'Segoe UI', 'Arial', sans-serif;
   --radius: 8px;
   --radius-lg: 12px;
@@ -551,7 +551,7 @@ body {
   min-height: 24px;
   line-height: 1.5;
   outline: none;
-  direction: rtl;
+  direction: auto;
 }
 
 .chat-input::placeholder {
@@ -855,8 +855,8 @@ body {
 
   .shared-terminal-container {
     max-width: 100%;
-    height: 100vh;
-    height: 100dvh;
+    height: 95vh;
+    height: 95dvh;
     border-radius: 0;
     border: none;
   }
@@ -870,8 +870,8 @@ body {
   }
 
   .rich-terminal-output {
+    font-size: 12px;
     padding: 10px 12px;
-    font-size: 12.5px;
     line-height: 1.6;
   }
 
@@ -1060,7 +1060,7 @@ body {
   color: var(--text-primary);
   white-space: pre-wrap;
   word-break: break-word;
-  direction: auto;
+  direction: ltr;
   unicode-bidi: plaintext;
   cursor: text;
   user-select: text;
@@ -1073,7 +1073,7 @@ body {
 .term-line {
   min-height: 1.4em;
   unicode-bidi: plaintext;
-  direction: auto;
+  direction: ltr;
   text-align: start;
   padding: 0 2px;
 }

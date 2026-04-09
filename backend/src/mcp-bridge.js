@@ -38,44 +38,44 @@ class McpBridge extends EventEmitter {
 
     console.log('[MCP Bridge] Starting claude mcp serve...');
 
-    // Find claude binary
-    const claudePath = process.platform === 'win32'
-      ? 'claude.cmd'
-      : 'claude';
-
-    this.proc = spawn(claudePath, ['mcp', 'serve'], {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env },
-      shell: true,
-    });
-
-    this.proc.stdout.on('data', (chunk) => {
-      this.buffer += chunk.toString();
-      this._parseMessages();
-    });
-
-    this.proc.stderr.on('data', (chunk) => {
-      const text = chunk.toString().trim();
-      if (text) {
-        console.log('[MCP Bridge stderr]', text);
-        this.emit('log', text);
-      }
-    });
-
-    this.proc.on('error', (err) => {
-      console.error('[MCP Bridge] Process error:', err.message);
-      this.emit('error', err.message);
-    });
-
-    this.proc.on('exit', (code) => {
-      console.log(`[MCP Bridge] Process exited with code ${code}`);
-      this.initialized = false;
-      this.proc = null;
-      this.emit('disconnected');
-    });
-
-    // Initialize MCP connection
     try {
+      // Find claude binary
+      const claudePath = process.platform === 'win32'
+        ? 'claude.cmd'
+        : 'claude';
+
+      this.proc = spawn(claudePath, ['mcp', 'serve'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env },
+        shell: true,
+      });
+
+      this.proc.stdout.on('data', (chunk) => {
+        this.buffer += chunk.toString();
+        this._parseMessages();
+      });
+
+      this.proc.stderr.on('data', (chunk) => {
+        const text = chunk.toString().trim();
+        if (text) {
+          console.log('[MCP Bridge stderr]', text);
+          this.emit('log', text);
+        }
+      });
+
+      this.proc.on('error', (err) => {
+        console.error('[MCP Bridge] Process error:', err.message);
+        this.emit('error', err.message);
+      });
+
+      this.proc.on('exit', (code) => {
+        console.log(`[MCP Bridge] Process exited with code ${code}`);
+        this.initialized = false;
+        this.proc = null;
+        this.emit('disconnected');
+      });
+
+      // Initialize MCP connection
       const initResult = await this._sendRequest('initialize', {
         protocolVersion: '2024-11-05',
         capabilities: {},
@@ -95,8 +95,12 @@ class McpBridge extends EventEmitter {
       this.initialized = true;
       this.emit('ready', { tools: this.tools });
     } catch (err) {
-      console.error('[MCP Bridge] Init failed:', err.message);
-      this.emit('error', `Init failed: ${err.message}`);
+      console.warn('[MCP Bridge] Start failed (claude CLI may not be available):', err.message);
+      this.initialized = false;
+      if (this.proc && !this.proc.killed) {
+        this.proc.kill();
+      }
+      this.proc = null;
     }
   }
 

@@ -425,8 +425,13 @@ app.get('*', (req, res) => {
 // Setup WebSocket
 const wss = setupWebSocket(server);
 
-// Forward MCP bridge events to WebSocket
+// Forward MCP bridge events to WebSocket (suppress failure messages)
 mcpBridge.on('log', (text) => {
+  // Don't broadcast MCP failure/error messages to clients
+  if (/failed|error|not found|ENOENT/i.test(text)) {
+    console.log('[MCP] Suppressed broadcast:', text);
+    return;
+  }
   if (wss.broadcastAll) {
     wss.broadcastAll({ type: 'mcp_log', text });
   }

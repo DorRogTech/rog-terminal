@@ -23,6 +23,7 @@ export default function App() {
   const [showTerminal, setShowTerminal] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
   const [claudeStatus, setClaudeStatus] = useState({ cli: { ready: false }, agent: { connected: false }, checking: true });
+  const [currentProjectName, setCurrentProjectName] = useState(null);
 
   // Load sessions on mount
   useEffect(() => {
@@ -130,6 +131,12 @@ export default function App() {
 
       wsClient.on('agent_status', (data) => {
         setClaudeStatus(prev => ({ ...prev, agent: { connected: data.connected, deviceName: data.deviceName, user: data.user } }));
+      }),
+
+      wsClient.on('project_selected', (data) => {
+        // Extract project name from path
+        const name = data.name || (data.path ? data.path.split(/[\\/]/).pop() : null);
+        setCurrentProjectName(name);
       }),
 
       wsClient.on('mcp_message', (data) => {
@@ -304,6 +311,7 @@ export default function App() {
         onOpenTerminal={() => setShowTerminal(true)}
         onOpenProjects={() => setShowProjects(true)}
         hasActiveSession={!!activeSession}
+        currentProjectName={currentProjectName}
       />
       {showSettings && (
         <SettingsModal
@@ -319,6 +327,7 @@ export default function App() {
       <SharedTerminal
         active={showTerminal && !!activeSession}
         onClose={() => setShowTerminal(false)}
+        currentProjectName={currentProjectName}
       />
     </div>
   );

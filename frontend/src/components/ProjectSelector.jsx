@@ -42,8 +42,8 @@ export default function ProjectSelector({ onClose }) {
               Loading projects...
             </div>
           ) : projects.length === 0 ? (
-            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)' }}>
-              No git projects found. Make sure the Agent is running.
+            <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', direction: 'rtl' }}>
+              Agent לא מחובר. הפעל את ה-Agent במחשב כדי לגשת לפרויקטים.
             </div>
           ) : (
             projects.map((p) => (

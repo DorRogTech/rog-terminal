@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import wsClient from '../utils/websocket';
 import { ansiToHtml } from '../utils/ansi-to-html';
 
-export default function SharedTerminal({ active, onClose }) {
+export default function SharedTerminal({ active, onClose, currentProjectName }) {
   const outputRef = useRef(null);
   const inputRef = useRef(null);
   const [ready, setReady] = useState(false);
@@ -115,7 +115,7 @@ export default function SharedTerminal({ active, onClose }) {
   if (!active) return null;
 
   return (
-    <div className="shared-terminal-overlay" onClick={onClose}>
+    <div className="shared-terminal-overlay">
       <div className="shared-terminal-container" onClick={(e) => e.stopPropagation()}>
         <div className="shared-terminal-header">
           <div className="shared-terminal-title">
@@ -152,8 +152,8 @@ export default function SharedTerminal({ active, onClose }) {
         />
 
         <div className="rich-terminal-status-bar">
-          <span>Type here — keystrokes sent live (autocomplete works)</span>
-          <span>Ctrl+C to cancel</span>
+          <span>{currentProjectName || 'No project'} — Type to input</span>
+          <span>Ctrl+C to cancel | ✕ to close</span>
         </div>
       </div>
     </div>
