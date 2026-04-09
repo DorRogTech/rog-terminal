@@ -340,20 +340,22 @@ mcpBridge.on('log', (text) => {
 
 // Broadcast Claude connection status to all clients
 let lastClaudeStatus = null;
+const isCloud = !!process.env.FLY_APP_NAME;
 
 async function checkAndBroadcastClaudeStatus() {
   try {
-    const cliReady = await claudeCli.isAvailable();
-    const mcpPing = await mcpBridge.ping();
-    const status = {
-      type: 'claude_status',
-      cli: { ready: cliReady },
-      mcp: { ready: mcpPing.ok, tools: mcpPing.ok ? (mcpPing.tools || 0) : 0, error: mcpPing.error || null },
-    };
-    const key = `${cliReady}-${mcpPing.ok}`;
+    const agent = wss.isAgentConnected ? wss.isAgentConnected() : { connected: false };
+    let status;
+    if (isCloud) {
+      status = { type: 'claude_status', agent, mode: 'cloud' };
+    } else {
+      const cliReady = await claudeCli.isAvailable();
+      status = { type: 'claude_status', cli: { ready: cliReady }, agent, mode: 'local' };
+    }
+    const key = `${status.agent.connected}-${status.cli?.ready || false}`;
     if (key !== lastClaudeStatus) {
       lastClaudeStatus = key;
-      console.log(`[Claude Status] CLI=${cliReady}, MCP=${mcpPing.ok}`);
+      console.log(`[Claude Status] Agent=${status.agent.connected}, CLI=${status.cli?.ready || 'N/A'}, mode=${status.mode}`);
       if (wss.broadcastAll) wss.broadcastAll(status);
     }
   } catch (err) {

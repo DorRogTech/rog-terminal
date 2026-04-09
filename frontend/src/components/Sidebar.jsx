@@ -92,16 +92,25 @@ export default function Sidebar({
         )}
 
         {/* Claude Connection Status */}
-        {claudeStatus && !claudeStatus.checking && (() => {
+        {claudeStatus && (() => {
+          if (claudeStatus.checking) {
+            return (
+              <div className="mcp-status-bar">
+                <div className="mcp-status-row">
+                  <span className="mcp-dot checking" />
+                  <span className="mcp-label">בודק חיבור ל-Claude...</span>
+                </div>
+              </div>
+            );
+          }
           const isCloud = claudeStatus.mode === 'cloud';
           const agentOk = claudeStatus.agent?.connected;
           const cliOk = claudeStatus.cli?.ready;
-          // Connected if: agent connected OR (local mode + CLI available)
           const isConnected = agentOk || (!isCloud && cliOk);
           const statusClass = isConnected ? 'connected' : 'disconnected';
           const label = agentOk
-            ? `Claude Agent מחובר (${claudeStatus.agent.deviceName || 'local'})`
-            : cliOk ? 'Claude CLI מחובר'
+            ? `Claude מחובר (${claudeStatus.agent.deviceName || 'Agent'})`
+            : cliOk ? 'Claude מחובר (CLI)'
             : 'Claude מנותק';
           return (
             <div className="mcp-status-bar">
@@ -114,23 +123,14 @@ export default function Sidebar({
                   <button className="mcp-reconnect-btn" onClick={onReconnectClaude}>
                     בדוק שוב
                   </button>
-                  {isCloud ? (
-                    <button
-                      className="mcp-auth-link"
-                      onClick={onClaudeAuth}
-                      title="פותח דפדפן להתחברות לחשבון Claude"
-                    >
-                      התחבר ל-Claude
-                    </button>
-                  ) : (
-                    <button
-                      className="mcp-auth-link"
-                      onClick={onClaudeAuth}
-                      title="פותח דפדפן להתחברות לחשבון Claude"
-                    >
+                  {!isCloud && (
+                    <button className="mcp-auth-link" onClick={onClaudeAuth}>
                       התחבר ל-Claude
                     </button>
                   )}
+                  <button className="mcp-auth-link" onClick={onOpenSettings}>
+                    הגדרות
+                  </button>
                 </div>
               )}
             </div>
