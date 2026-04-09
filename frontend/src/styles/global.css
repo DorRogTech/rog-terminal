@@ -850,51 +850,10 @@ body {
     font-size: 16px;
   }
 
-  /* Terminal mobile */
+  /* Terminal mobile — layout handled by .mobile class */
   .shared-terminal-overlay {
     padding: 0;
     align-items: stretch;
-  }
-
-  .shared-terminal-container {
-    max-width: 100%;
-    height: 100vh;
-    height: 100dvh;
-    border-radius: 0;
-    border: none;
-    touch-action: manipulation;
-  }
-
-  .shared-terminal-header {
-    padding: 10px 12px;
-  }
-
-  .shared-terminal-title {
-    font-size: 12px;
-  }
-
-  .btn-terminal-close {
-    min-width: 44px;
-    min-height: 44px;
-    font-size: 24px;
-  }
-
-  .rich-terminal-output {
-    font-size: 12px;
-    padding: 10px 12px;
-    line-height: 1.6;
-    touch-action: pan-y;
-    -webkit-overflow-scrolling: touch;
-  }
-
-  .rich-terminal-input-area {
-    padding: 8px 10px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom));
-  }
-
-  .rich-terminal-input {
-    font-size: 16px;
-    padding: 12px 14px;
   }
 
   .rich-terminal-status-bar {
@@ -1526,14 +1485,17 @@ body {
 
 /* === Terminal Mobile Input Bar === */
 
+/* === Mobile Terminal Input === */
+
 .terminal-mobile-input-area {
   border-top: 1px solid var(--border);
   background: var(--bg-secondary);
-  padding: 6px 10px;
-  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  padding: 8px 8px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .terminal-mobile-quick-actions {
@@ -1542,6 +1504,7 @@ body {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  padding: 2px 0;
 }
 .terminal-mobile-quick-actions::-webkit-scrollbar { display: none; }
 
@@ -1550,72 +1513,127 @@ body {
   border: 1px solid var(--border);
   color: var(--accent);
   font-family: var(--font-mono);
-  font-size: 12px;
-  font-weight: 600;
-  padding: 6px 12px;
-  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0;
+  border-radius: 6px;
   cursor: pointer;
   white-space: nowrap;
-  min-height: 34px;
-  min-width: 44px;
+  height: 44px;
+  min-width: 48px;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all var(--transition);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
   flex-shrink: 0;
 }
 .terminal-quick-btn:active {
-  background: var(--accent-glow);
+  background: var(--accent);
+  color: #fff;
   border-color: var(--accent);
+  transform: scale(0.95);
+}
+.quick-key-label {
+  font-size: 12px;
+  letter-spacing: 0.5px;
 }
 
 .terminal-mobile-input-row {
   display: flex;
   gap: 8px;
-  align-items: center;
+  align-items: stretch;
 }
 
 .terminal-mobile-input {
   flex: 1;
   background: var(--bg-input);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 16px; /* Prevent iOS zoom */
-  padding: 10px 14px;
-  border-radius: var(--radius);
+  font-size: 16px; /* Prevent iOS zoom — MUST be 16px */
+  padding: 12px 14px;
+  border-radius: 8px;
   outline: none;
   transition: border-color var(--transition);
   direction: ltr;
   text-align: left;
+  min-height: 48px;
+  -webkit-appearance: none;
+  appearance: none;
 }
 .terminal-mobile-input:focus {
-  border-color: var(--border-focus);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
 }
 .terminal-mobile-input::placeholder {
   color: var(--text-muted);
   direction: rtl;
+  font-family: var(--font-hebrew);
 }
 
 .terminal-mobile-send-btn {
   background: var(--accent);
   border: none;
   color: #fff;
-  font-family: var(--font-mono);
-  font-size: 14px;
-  font-weight: 600;
-  padding: 10px 18px;
-  border-radius: var(--radius);
+  font-size: 18px;
+  padding: 0;
+  border-radius: 8px;
   cursor: pointer;
-  min-height: 44px;
-  min-width: 60px;
-  transition: all var(--transition);
+  height: 48px;
+  width: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   flex-shrink: 0;
 }
 .terminal-mobile-send-btn:active {
   background: var(--accent-hover);
+  transform: scale(0.95);
 }
 .terminal-mobile-send-btn:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Mobile terminal container adjustments */
+.shared-terminal-container.mobile {
+  height: 100vh;
+  height: 100dvh;
+  max-width: 100%;
+  border-radius: 0;
+  border: none;
+}
+
+.shared-terminal-container.mobile .shared-terminal-header {
+  padding: 8px 12px;
+  min-height: 44px;
+}
+
+.shared-terminal-container.mobile .shared-terminal-title {
+  font-size: 13px;
+}
+
+.shared-terminal-container.mobile .rich-terminal-output {
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 8px 10px;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* When virtual keyboard is open, shrink terminal output */
+.shared-terminal-container.keyboard-open {
+  height: 100vh;
+  height: 100dvh;
+}
+.shared-terminal-container.keyboard-open .rich-terminal-output {
+  flex: 1;
+  min-height: 0;
+}
+.shared-terminal-container.keyboard-open .rich-terminal-status-bar {
+  display: none;
 }
