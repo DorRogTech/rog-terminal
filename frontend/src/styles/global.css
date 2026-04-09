@@ -1031,8 +1031,25 @@ body {
 }
 .btn-terminal-close:hover { color: var(--error); }
 
-/* === Rich Terminal Output (HTML-based, full RTL support) === */
+/* === xterm.js Terminal Container === */
 
+.xterm-container {
+  flex: 1;
+  overflow: hidden;
+  padding: 4px;
+  background: #0a0e17;
+  min-height: 0;
+}
+
+.xterm-container .xterm {
+  height: 100%;
+}
+
+.xterm-container .xterm-viewport {
+  overscroll-behavior: contain;
+}
+
+/* Legacy rich terminal output (kept for backward compatibility) */
 .rich-terminal-output {
   flex: 1;
   overflow-y: auto;
@@ -1047,22 +1064,6 @@ body {
   unicode-bidi: plaintext;
   cursor: text;
   user-select: text;
-}
-
-.rich-terminal-output * {
-  unicode-bidi: plaintext;
-}
-
-.term-line {
-  min-height: 1.4em;
-  unicode-bidi: plaintext;
-  direction: ltr;
-  text-align: start;
-  padding: 0 2px;
-}
-
-.term-line:hover {
-  background: rgba(255,255,255,0.03);
 }
 
 /* === Rich Terminal Input === */

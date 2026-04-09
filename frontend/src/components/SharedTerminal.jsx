@@ -1,112 +1,148 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import { WebLinksAddon } from '@xterm/addon-web-links';
+import '@xterm/xterm/css/xterm.css';
 import wsClient from '../utils/websocket';
-import { ansiToHtml } from '../utils/ansi-to-html';
 
 export default function SharedTerminal({ active, onClose, currentProjectName }) {
-  const outputRef = useRef(null);
-  const inputRef = useRef(null);
-  const mobileInputRef = useRef(null);
-  const containerRef = useRef(null);
+  const terminalRef = useRef(null);
+  const xtermRef = useRef(null);
+  const fitAddonRef = useRef(null);
   const [ready, setReady] = useState(false);
-  const [outputHtml, setOutputHtml] = useState('');
-  const bufferRef = useRef('');
   const [isMobile, setIsMobile] = useState(false);
   const [mobileInput, setMobileInput] = useState('');
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const mobileInputRef = useRef(null);
 
-  // Reliable mobile detection: touch support + screen width
+  // Mobile detection
   useEffect(() => {
     function checkMobile() {
-      const mobile = window.innerWidth <= 768 ||
-        ('ontouchstart' in window) ||
-        (navigator.maxTouchPoints > 0);
-      setIsMobile(mobile);
+      setIsMobile(window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024));
     }
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Detect virtual keyboard open/close via visualViewport API
+  // Initialize xterm.js when terminal becomes active
   useEffect(() => {
-    if (!active || !isMobile) return;
-    const vv = window.visualViewport;
-    if (!vv) return;
+    if (!active || !terminalRef.current) return;
 
-    function onResize() {
-      // When keyboard opens, visualViewport.height shrinks
-      const keyboardUp = vv.height < window.innerHeight * 0.75;
-      setKeyboardVisible(keyboardUp);
-      // Scroll output to bottom when keyboard opens
-      if (keyboardUp && outputRef.current) {
-        requestAnimationFrame(() => {
-          outputRef.current.scrollTop = outputRef.current.scrollHeight;
-        });
-      }
-    }
-    vv.addEventListener('resize', onResize);
-    return () => vv.removeEventListener('resize', onResize);
-  }, [active, isMobile]);
+    const term = new Terminal({
+      cursorBlink: true,
+      cursorStyle: 'bar',
+      fontSize: isMobile ? 12 : 14,
+      fontFamily: "'IBM Plex Mono', 'Courier New', 'Menlo', monospace",
+      theme: {
+        background: '#0a0e17',
+        foreground: '#e2e8f0',
+        cursor: '#3b82f6',
+        selectionBackground: 'rgba(59, 130, 246, 0.3)',
+        black: '#1a2236',
+        red: '#ef4444',
+        green: '#22c55e',
+        yellow: '#f59e0b',
+        blue: '#3b82f6',
+        magenta: '#a78bfa',
+        cyan: '#06b6d4',
+        white: '#e2e8f0',
+        brightBlack: '#64748b',
+        brightRed: '#f87171',
+        brightGreen: '#4ade80',
+        brightYellow: '#fbbf24',
+        brightBlue: '#60a5fa',
+        brightMagenta: '#c4b5fd',
+        brightCyan: '#22d3ee',
+        brightWhite: '#f8fafc',
+      },
+      scrollback: 5000,
+      convertEol: false,
+      allowProposedApi: true,
+      // Mobile: disable built-in keyboard handling, use our input
+      disableStdin: isMobile,
+    });
 
-  useEffect(() => {
-    if (!active) return;
+    const fitAddon = new FitAddon();
+    term.loadAddon(fitAddon);
+    term.loadAddon(new WebLinksAddon());
 
-    const appendOutput = (data) => {
-      bufferRef.current += data;
-      if (bufferRef.current.length > 100000) {
-        bufferRef.current = bufferRef.current.slice(-80000);
-      }
-      const html = ansiToHtml(bufferRef.current);
-      setOutputHtml(html);
+    term.open(terminalRef.current);
 
-      requestAnimationFrame(() => {
-        if (outputRef.current) {
-          outputRef.current.scrollTop = outputRef.current.scrollHeight;
-        }
+    // Fit to container
+    requestAnimationFrame(() => {
+      try { fitAddon.fit(); } catch {}
+    });
+
+    xtermRef.current = term;
+    fitAddonRef.current = fitAddon;
+
+    // Desktop: send keystrokes to server
+    if (!isMobile) {
+      term.onData((data) => {
+        wsClient.send({ type: 'terminal_input', data });
       });
-    };
+    }
 
-    const unsubOutput = wsClient.on('terminal_output', (msg) => appendOutput(msg.data));
-    const unsubHistory = wsClient.on('terminal_history', (msg) => appendOutput(msg.data));
+    // Receive output from server
+    const unsubOutput = wsClient.on('terminal_output', (msg) => {
+      term.write(msg.data);
+    });
+    const unsubHistory = wsClient.on('terminal_history', (msg) => {
+      term.write(msg.data);
+    });
     const unsubReady = wsClient.on('terminal_ready', () => {
       setReady(true);
       if (isMobile) {
         mobileInputRef.current?.focus();
       } else {
-        inputRef.current?.focus();
+        term.focus();
       }
     });
     const unsubClosed = wsClient.on('terminal_closed', () => {
-      appendOutput('\n[Terminal closed]\n');
+      term.write('\r\n[Terminal closed]\r\n');
       setReady(false);
     });
 
-    // Send smaller terminal size for mobile
-    const cols = isMobile ? 80 : 120;
-    const rows = isMobile ? 24 : 40;
+    // Send terminal_open with proper size
+    const cols = isMobile ? 80 : term.cols || 120;
+    const rows = isMobile ? 24 : term.rows || 40;
     wsClient.send({ type: 'terminal_open', cols, rows });
+
+    // Handle window resize
+    function handleResize() {
+      try {
+        fitAddon.fit();
+        // Notify server of new size
+        wsClient.send({ type: 'terminal_resize', cols: term.cols, rows: term.rows });
+      } catch {}
+    }
+    window.addEventListener('resize', handleResize);
+
+    // Handle visualViewport resize (mobile keyboard)
+    const vv = window.visualViewport;
+    function handleVvResize() {
+      try { fitAddon.fit(); } catch {}
+    }
+    if (vv) vv.addEventListener('resize', handleVvResize);
 
     return () => {
       unsubOutput();
       unsubHistory();
       unsubReady();
       unsubClosed();
+      window.removeEventListener('resize', handleResize);
+      if (vv) vv.removeEventListener('resize', handleVvResize);
+      term.dispose();
+      xtermRef.current = null;
+      fitAddonRef.current = null;
     };
   }, [active, isMobile]);
-
-  useEffect(() => {
-    if (active) {
-      bufferRef.current = '';
-      setOutputHtml('');
-    }
-  }, [active]);
 
   // Mobile input handlers
   const handleMobileSend = useCallback(() => {
     if (mobileInput && ready) {
       wsClient.send({ type: 'terminal_input', data: mobileInput + '\r' });
       setMobileInput('');
-      // Keep focus on input so keyboard stays open
       setTimeout(() => mobileInputRef.current?.focus(), 50);
     }
   }, [mobileInput, ready]);
@@ -114,74 +150,25 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
   const sendSpecialKey = useCallback((key) => {
     if (!ready) return;
     const keyMap = {
-      'ctrl-c': '\x03',
-      'ctrl-d': '\x04',
-      'ctrl-z': '\x1a',
-      'tab': '\t',
-      'up': '\x1b[A',
-      'down': '\x1b[B',
-      'left': '\x1b[C',
-      'right': '\x1b[D',
-      'escape': '\x1b',
-      'enter': '\r',
-      'backspace': '\x7f',
+      'ctrl-c': '\x03', 'ctrl-d': '\x04', 'ctrl-z': '\x1a',
+      'tab': '\t', 'up': '\x1b[A', 'down': '\x1b[B',
+      'left': '\x1b[D', 'right': '\x1b[C', 'escape': '\x1b',
     };
     if (keyMap[key]) {
       wsClient.send({ type: 'terminal_input', data: keyMap[key] });
     }
   }, [ready]);
 
-  // Desktop keystroke handlers
-  function handleKeyDown(e) {
-    if (!ready) return;
-    const keyMap = {
-      'Enter': '\r', 'Backspace': '\x7f', 'Tab': '\t', 'Escape': '\x1b',
-      'ArrowUp': '\x1b[A', 'ArrowDown': '\x1b[B',
-      'ArrowRight': '\x1b[C', 'ArrowLeft': '\x1b[D',
-      'Home': '\x1b[H', 'End': '\x1b[F', 'Delete': '\x1b[3~',
-    };
-    if (e.ctrlKey && e.key.length === 1) {
-      e.preventDefault();
-      const code = e.key.toLowerCase().charCodeAt(0) - 96;
-      if (code > 0 && code < 27) {
-        wsClient.send({ type: 'terminal_input', data: String.fromCharCode(code) });
-      }
-      return;
-    }
-    if (keyMap[e.key]) {
-      e.preventDefault();
-      wsClient.send({ type: 'terminal_input', data: keyMap[e.key] });
-    }
-  }
-
-  function handleInput(e) {
-    const data = e.target.value;
-    if (data) {
-      wsClient.send({ type: 'terminal_input', data });
-      e.target.value = '';
-    }
-  }
-
-  function handlePaste(e) {
-    e.preventDefault();
-    const text = e.clipboardData.getData('text');
-    if (text) wsClient.send({ type: 'terminal_input', data: text });
-  }
-
   if (!active) return null;
 
   return (
     <div className="shared-terminal-overlay">
-      <div
-        className={`shared-terminal-container ${isMobile ? 'mobile' : ''} ${keyboardVisible ? 'keyboard-open' : ''}`}
-        ref={containerRef}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header — compact on mobile */}
+      <div className={`shared-terminal-container ${isMobile ? 'mobile' : ''}`} onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
         <div className="shared-terminal-header">
           <div className="shared-terminal-title">
             <span className={`terminal-dot ${ready ? 'green' : 'red'}`} />
-            {isMobile ? (currentProjectName || 'Terminal') : 'Claude Code — Shared Terminal'}
+            {isMobile ? (currentProjectName || 'Terminal') : `Claude Code — ${currentProjectName || 'Shared Terminal'}`}
           </div>
           <div className="shared-terminal-actions">
             {!isMobile && (
@@ -193,58 +180,36 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
           </div>
         </div>
 
-        {/* Terminal output */}
+        {/* xterm.js terminal */}
         <div
-          className="rich-terminal-output"
-          ref={outputRef}
-          onClick={() => !isMobile && inputRef.current?.focus()}
-          dangerouslySetInnerHTML={{ __html: outputHtml }}
+          className="xterm-container"
+          ref={terminalRef}
+          onClick={() => !isMobile && xtermRef.current?.focus()}
         />
 
-        {/* Desktop: hidden input for keystroke capture */}
-        {!isMobile && (
-          <input
-            ref={inputRef}
-            className="terminal-hidden-input"
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            onPaste={handlePaste}
-            autoFocus
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="off"
-            spellCheck={false}
-          />
-        )}
-
-        {/* Mobile: full input area with quick keys */}
+        {/* Mobile: input area with quick keys */}
         {isMobile && (
           <div className="terminal-mobile-input-area">
             <div className="terminal-mobile-quick-actions">
-              <button className="terminal-quick-btn" onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey('ctrl-c'); }}>
-                <span className="quick-key-label">^C</span>
-              </button>
-              <button className="terminal-quick-btn" onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey('ctrl-d'); }}>
-                <span className="quick-key-label">^D</span>
-              </button>
-              <button className="terminal-quick-btn" onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey('tab'); }}>
-                <span className="quick-key-label">Tab</span>
-              </button>
-              <button className="terminal-quick-btn" onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey('up'); }}>
-                &#9650;
-              </button>
-              <button className="terminal-quick-btn" onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey('down'); }}>
-                &#9660;
-              </button>
-              <button className="terminal-quick-btn" onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey('left'); }}>
-                &#9664;
-              </button>
-              <button className="terminal-quick-btn" onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey('right'); }}>
-                &#9654;
-              </button>
-              <button className="terminal-quick-btn" onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey('escape'); }}>
-                <span className="quick-key-label">Esc</span>
-              </button>
+              {[
+                { key: 'ctrl-c', label: '^C' },
+                { key: 'ctrl-d', label: '^D' },
+                { key: 'tab', label: 'Tab' },
+                { key: 'up', label: '▲' },
+                { key: 'down', label: '▼' },
+                { key: 'left', label: '◀' },
+                { key: 'right', label: '▶' },
+                { key: 'escape', label: 'Esc' },
+              ].map(({ key, label }) => (
+                <button
+                  key={key}
+                  className="terminal-quick-btn"
+                  onTouchEnd={(e) => { e.preventDefault(); sendSpecialKey(key); }}
+                  onClick={() => sendSpecialKey(key)}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
             <div className="terminal-mobile-input-row">
               <input
@@ -280,11 +245,11 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
           </div>
         )}
 
-        {/* Status bar — hidden on mobile when keyboard is up */}
-        {!(isMobile && keyboardVisible) && (
+        {/* Status bar */}
+        {!isMobile && (
           <div className="rich-terminal-status-bar">
-            <span>{currentProjectName || 'No project'}{!isMobile ? ' — Type to input' : ''}</span>
-            <span>{ready ? (isMobile ? 'Connected' : 'Ctrl+C to cancel') : 'Connecting...'}</span>
+            <span>{currentProjectName || 'No project'} — Click to type</span>
+            <span>{ready ? 'Ctrl+C to cancel' : 'Connecting...'}</span>
           </div>
         )}
       </div>
