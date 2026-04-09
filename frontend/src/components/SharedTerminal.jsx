@@ -5,9 +5,12 @@ import { ansiToHtml } from '../utils/ansi-to-html';
 export default function SharedTerminal({ active, onClose, currentProjectName }) {
   const outputRef = useRef(null);
   const inputRef = useRef(null);
+  const mobileInputRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [outputHtml, setOutputHtml] = useState('');
   const bufferRef = useRef('');
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  const [mobileInput, setMobileInput] = useState('');
 
   useEffect(() => {
     if (!active) return;
@@ -55,6 +58,37 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       setOutputHtml('');
     }
   }, [active]);
+
+  // Mobile detection
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Mobile input send handler
+  function handleMobileSend() {
+    if (mobileInput && ready) {
+      wsClient.send({ type: 'terminal_input', data: mobileInput + '\r' });
+      setMobileInput('');
+      mobileInputRef.current?.focus();
+    }
+  }
+
+  // Mobile quick-action keys
+  function sendSpecialKey(key) {
+    if (!ready) return;
+    const keyMap = {
+      'ctrl-c': '\x03',
+      'tab': '\t',
+      'arrow-up': '\x1b[A',
+      'arrow-down': '\x1b[B',
+      'escape': '\x1b',
+    };
+    if (keyMap[key]) {
+      wsClient.send({ type: 'terminal_input', data: keyMap[key] });
+    }
+  }
 
   // Send each keystroke in real-time (enables autocomplete)
   function handleKeyDown(e) {
@@ -137,23 +171,69 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
           dangerouslySetInnerHTML={{ __html: outputHtml }}
         />
 
-        {/* Hidden input that captures all keystrokes */}
-        <input
-          ref={inputRef}
-          className="terminal-hidden-input"
-          onKeyDown={handleKeyDown}
-          onInput={handleInput}
-          onPaste={handlePaste}
-          autoFocus
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-        />
+        {/* Desktop: hidden input that captures all keystrokes */}
+        {!isMobile && (
+          <input
+            ref={inputRef}
+            className="terminal-hidden-input"
+            onKeyDown={handleKeyDown}
+            onInput={handleInput}
+            onPaste={handlePaste}
+            autoFocus
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+          />
+        )}
+
+        {/* Mobile: visible input bar */}
+        {isMobile && (
+          <div className="terminal-mobile-input-area">
+            <div className="terminal-mobile-quick-actions">
+              <button className="terminal-quick-btn" onClick={() => sendSpecialKey('ctrl-c')}>Ctrl+C</button>
+              <button className="terminal-quick-btn" onClick={() => sendSpecialKey('tab')}>Tab</button>
+              <button className="terminal-quick-btn" onClick={() => sendSpecialKey('arrow-up')}>&#9650;</button>
+              <button className="terminal-quick-btn" onClick={() => sendSpecialKey('arrow-down')}>&#9660;</button>
+              <button className="terminal-quick-btn" onClick={() => sendSpecialKey('escape')}>Esc</button>
+            </div>
+            <div className="terminal-mobile-input-row">
+              <input
+                ref={mobileInputRef}
+                className="terminal-mobile-input"
+                type="text"
+                value={mobileInput}
+                onChange={(e) => setMobileInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleMobileSend();
+                  }
+                }}
+                onPaste={(e) => {
+                  // Allow paste into mobile input normally
+                }}
+                placeholder="הקלד כאן..."
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
+                dir="ltr"
+              />
+              <button
+                className="terminal-mobile-send-btn"
+                onClick={handleMobileSend}
+                disabled={!mobileInput || !ready}
+              >
+                Send
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="rich-terminal-status-bar">
-          <span>{currentProjectName || 'No project'} — Type to input</span>
-          <span>Ctrl+C to cancel | ✕ to close</span>
+          <span>{currentProjectName || 'No project'}{!isMobile ? ' — Type to input' : ''}</span>
+          <span>{!isMobile ? 'Ctrl+C to cancel | ' : ''}&#10005; to close</span>
         </div>
       </div>
     </div>

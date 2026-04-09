@@ -42,12 +42,15 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
+  min-height: 100dvh;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  touch-action: manipulation;
 }
 
 #root {
   height: 100vh;
+  height: 100dvh;
   display: flex;
 }
 
@@ -791,8 +794,8 @@ body {
   }
 
   .btn-send {
-    width: 42px;
-    height: 42px;
+    width: 44px;
+    height: 44px;
     border-radius: var(--radius);
   }
 
@@ -823,8 +826,8 @@ body {
   }
 
   .btn-logout, .btn-icon {
-    min-width: 36px;
-    min-height: 36px;
+    min-width: 44px;
+    min-height: 44px;
   }
 
   /* Auth page mobile */
@@ -855,10 +858,11 @@ body {
 
   .shared-terminal-container {
     max-width: 100%;
-    height: 95vh;
-    height: 95dvh;
+    height: 100vh;
+    height: 100dvh;
     border-radius: 0;
     border: none;
+    touch-action: manipulation;
   }
 
   .shared-terminal-header {
@@ -869,10 +873,18 @@ body {
     font-size: 12px;
   }
 
+  .btn-terminal-close {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 24px;
+  }
+
   .rich-terminal-output {
     font-size: 12px;
     padding: 10px 12px;
     line-height: 1.6;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
   }
 
   .rich-terminal-input-area {
@@ -888,6 +900,7 @@ body {
   .rich-terminal-status-bar {
     padding: 6px 12px;
     font-size: 10px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
   }
 
   /* Modal mobile */
@@ -905,6 +918,16 @@ body {
 
   .modal-body {
     padding: 16px;
+  }
+
+  /* Project selector items - big touch targets on mobile */
+  .project-item {
+    padding: 16px 14px;
+    min-height: 52px;
+  }
+
+  .project-name {
+    font-size: 15px;
   }
 
   /* Online users - compact on mobile */
@@ -972,6 +995,7 @@ body {
 @supports (padding: env(safe-area-inset-bottom)) {
   .chat-input-area,
   .rich-terminal-input-area,
+  .terminal-mobile-input-area,
   .user-info {
     padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
@@ -1498,4 +1522,100 @@ body {
 }
 .context-menu button.danger:hover {
   background: rgba(239, 68, 68, 0.1);
+}
+
+/* === Terminal Mobile Input Bar === */
+
+.terminal-mobile-input-area {
+  border-top: 1px solid var(--border);
+  background: var(--bg-secondary);
+  padding: 6px 10px;
+  padding-bottom: max(6px, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.terminal-mobile-quick-actions {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.terminal-mobile-quick-actions::-webkit-scrollbar { display: none; }
+
+.terminal-quick-btn {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  white-space: nowrap;
+  min-height: 34px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.terminal-quick-btn:active {
+  background: var(--accent-glow);
+  border-color: var(--accent);
+}
+
+.terminal-mobile-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.terminal-mobile-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 16px; /* Prevent iOS zoom */
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  outline: none;
+  transition: border-color var(--transition);
+  direction: ltr;
+  text-align: left;
+}
+.terminal-mobile-input:focus {
+  border-color: var(--border-focus);
+}
+.terminal-mobile-input::placeholder {
+  color: var(--text-muted);
+  direction: rtl;
+}
+
+.terminal-mobile-send-btn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 18px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  min-height: 44px;
+  min-width: 60px;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.terminal-mobile-send-btn:active {
+  background: var(--accent-hover);
+}
+.terminal-mobile-send-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
