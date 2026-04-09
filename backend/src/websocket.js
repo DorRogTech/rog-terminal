@@ -286,10 +286,8 @@ function setupWebSocket(server) {
               // Fallback: check if the user has their own API key
               const dbUser = stmts.getUserById.get(user.id);
               if (dbUser && dbUser.claude_api_key) {
-                // Use user's personal API key
-                if (!claudeApi.isConfigured(sessionId)) {
-                  claudeApi.configureSession(sessionId, { apiKey: dbUser.claude_api_key });
-                }
+                // Use user's API key / OAuth token
+                claudeApi.configureSession(sessionId, { apiKey: dbUser.claude_api_key });
                 const recentMsgs = stmts.getMessages.all(sessionId)
                   .slice(-20)
                   .map(m => ({ role: m.role, content: m.content }));
