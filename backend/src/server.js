@@ -271,9 +271,25 @@ app.post('/api/claude/oauth/exchange', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: errMsg });
     }
 
-    // Save the OAuth token as the user's API key
-    stmts.updateApiKey.run(tokenData.access_token, req.user.id);
-    console.log(`[OAuth] User ${req.user.id} authenticated with Claude OAuth`);
+    // Exchange OAuth token for a permanent API key (like Claude Code does)
+    let apiKey = tokenData.access_token;
+    try {
+      const apiKeyRes = await fetch('https://api.anthropic.com/api/oauth/claude_cli/create_api_key', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
+      });
+      const apiKeyData = await apiKeyRes.json();
+      console.log('[OAuth] API key creation:', apiKeyRes.status, apiKeyData.raw_key ? 'got key' : 'no key');
+      if (apiKeyData.raw_key) {
+        apiKey = apiKeyData.raw_key;
+        console.log(`[OAuth] Got permanent API key: ${apiKey.slice(0, 15)}...`);
+      }
+    } catch (keyErr) {
+      console.log('[OAuth] API key creation failed, using OAuth token:', keyErr.message);
+    }
+
+    stmts.updateApiKey.run(apiKey, req.user.id);
+    console.log(`[OAuth] User ${req.user.id} authenticated, key type: ${apiKey.includes('-oat') ? 'oauth-token' : 'api-key'}`);
 
     // Broadcast updated status
     if (wss.broadcastAll) {
