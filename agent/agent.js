@@ -278,7 +278,7 @@ function connectWs() {
         }));
 
         try {
-          const response = await askClaude(sessionId, msg.content);
+          const response = await askClaude(currentSessionId, msg.content);
           console.log(`  [Claude] ${response.slice(0, 60)}...`);
 
           // Send response as system message
