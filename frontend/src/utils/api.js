@@ -105,8 +105,8 @@ export async function getMcpTools() {
   return apiFetch('/mcp/tools');
 }
 
-export async function triggerMcpAuth() {
-  return apiFetch('/mcp/auth', { method: 'POST' });
+export async function startClaudeOAuth() {
+  return apiFetch('/claude/oauth/start', { method: 'POST' });
 }
 
 export { getToken, getUser, clearAuth };

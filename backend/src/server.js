@@ -189,35 +189,114 @@ app.post('/api/mcp/call-tool', authMiddleware, async (req, res) => {
   }
 });
 
-// Trigger Claude auth - spawns `claude` which opens browser for OAuth
-app.post('/api/mcp/auth', authMiddleware, (req, res) => {
-  const { spawn } = require('child_process');
-  const claudePath = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+// === Claude OAuth (same flow as Claude Code CLI) ===
 
-  // Run `claude auth login` which opens browser for authentication
-  const proc = spawn(claudePath, ['auth', 'login'], {
-    shell: true,
-    env: { ...process.env },
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+const CLAUDE_OAUTH = {
+  CLIENT_ID: '9d1c250a-e61b-44d9-88ed-5944d1962f5e',
+  AUTHORIZE_URL: 'https://claude.com/cai/oauth/authorize',
+  TOKEN_URL: 'https://platform.claude.com/v1/oauth/token',
+  SCOPES: 'user:inference user:profile org:create_api_key',
+};
 
-  let stdout = '';
-  let stderr = '';
-  proc.stdout.on('data', (d) => { stdout += d.toString(); });
-  proc.stderr.on('data', (d) => { stderr += d.toString(); });
+// Store PKCE verifiers per user (in-memory, keyed by state)
+const oauthStates = new Map();
 
-  // Give it a few seconds to start the auth flow (it opens browser)
-  setTimeout(() => {
-    res.json({ ok: true, message: 'Auth flow started - check your browser' });
-  }, 2000);
+// Step 1: Generate OAuth URL for user to open
+app.post('/api/claude/oauth/start', authMiddleware, async (req, res) => {
+  const crypto = require('crypto');
 
-  proc.on('exit', (code) => {
-    console.log(`[MCP Auth] Exit code: ${code}, stdout: ${stdout.slice(0, 200)}, stderr: ${stderr.slice(0, 200)}`);
-    // After auth completes, try to restart MCP
-    if (code === 0) {
-      mcpBridge.start().catch(() => {});
+  // PKCE: generate code_verifier and code_challenge
+  const codeVerifier = crypto.randomBytes(32).toString('base64url');
+  const codeChallenge = crypto.createHash('sha256').update(codeVerifier).digest('base64url');
+  const state = crypto.randomBytes(16).toString('hex');
+
+  // Store verifier for token exchange
+  oauthStates.set(state, { codeVerifier, userId: req.user.id, createdAt: Date.now() });
+
+  // Clean old states (>10 min)
+  for (const [k, v] of oauthStates) {
+    if (Date.now() - v.createdAt > 600000) oauthStates.delete(k);
+  }
+
+  // Build the redirect_uri - the callback on our server
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const redirectUri = `${protocol}://${host}/api/claude/oauth/callback`;
+
+  const authUrl = `${CLAUDE_OAUTH.AUTHORIZE_URL}?` +
+    `client_id=${encodeURIComponent(CLAUDE_OAUTH.CLIENT_ID)}` +
+    `&response_type=code` +
+    `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+    `&scope=${encodeURIComponent(CLAUDE_OAUTH.SCOPES)}` +
+    `&state=${state}` +
+    `&code_challenge=${codeChallenge}` +
+    `&code_challenge_method=S256`;
+
+  res.json({ authUrl, state });
+});
+
+// Step 2: OAuth callback - exchange code for token
+app.get('/api/claude/oauth/callback', async (req, res) => {
+  const { code, state } = req.query;
+
+  if (!code || !state) {
+    return res.status(400).send('Missing code or state');
+  }
+
+  const stored = oauthStates.get(state);
+  if (!stored) {
+    return res.status(400).send('Invalid or expired state. Try again.');
+  }
+  oauthStates.delete(state);
+
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const redirectUri = `${protocol}://${host}/api/claude/oauth/callback`;
+
+  try {
+    // Exchange code for token
+    const tokenRes = await fetch(CLAUDE_OAUTH.TOKEN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        grant_type: 'authorization_code',
+        client_id: CLAUDE_OAUTH.CLIENT_ID,
+        code,
+        code_verifier: stored.codeVerifier,
+        redirect_uri: redirectUri,
+      }),
+    });
+
+    const tokenData = await tokenRes.json();
+
+    if (!tokenRes.ok || !tokenData.access_token) {
+      console.error('[OAuth] Token exchange failed:', tokenData);
+      return res.status(400).send(`OAuth failed: ${tokenData.error || 'unknown error'}`);
     }
-  });
+
+    // Save the OAuth token as the user's API key
+    const apiKey = tokenData.access_token;
+    stmts.updateApiKey.run(apiKey, stored.userId);
+    console.log(`[OAuth] User ${stored.userId} authenticated with Claude OAuth`);
+
+    // Redirect back to the app with success
+    res.send(`
+      <!DOCTYPE html>
+      <html dir="rtl"><head><meta charset="utf-8"><title>Claude Connected!</title>
+      <style>body{background:#0a0e17;color:#e2e8f0;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+      .box{text-align:center;padding:40px}.ok{color:#22c55e;font-size:48px;margin-bottom:16px}</style></head>
+      <body><div class="box"><div class="ok">&#10003;</div><h2>Claude מחובר!</h2><p>אפשר לסגור את הדף ולחזור ל-ROG Terminal</p>
+      <script>setTimeout(()=>window.close(),2000)</script></div></body></html>
+    `);
+
+    // Broadcast updated status
+    if (wss.broadcastAll) {
+      wss.broadcastAll({ type: 'claude_status', cli: { ready: false }, agent: wss.isAgentConnected(), apiKey: { ready: true }, mode: process.env.FLY_APP_NAME ? 'cloud' : 'local' });
+    }
+  } catch (err) {
+    console.error('[OAuth] Error:', err.message);
+    res.status(500).send(`OAuth error: ${err.message}`);
+  }
 });
 
 app.get('/api/mcp/tools', authMiddleware, (req, res) => {

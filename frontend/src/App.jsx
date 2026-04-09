@@ -5,7 +5,7 @@ import ChatArea from './components/ChatArea';
 import SettingsModal from './components/SettingsModal';
 import SharedTerminal from './components/SharedTerminal';
 import ProjectSelector from './components/ProjectSelector';
-import { getToken, getUser, getSessions, logout, getClaudeStatus, startMcp, triggerMcpAuth } from './utils/api';
+import { getToken, getUser, getSessions, logout, getClaudeStatus, startMcp, startClaudeOAuth } from './utils/api';
 import wsClient from './utils/websocket';
 
 export default function App() {
@@ -219,13 +219,25 @@ export default function App() {
 
   const handleClaudeAuth = useCallback(async () => {
     try {
-      await triggerMcpAuth();
-      // Re-check after a delay to let auth complete
-      setTimeout(handleReconnectClaude, 5000);
+      const { authUrl } = await startClaudeOAuth();
+      // Open Claude OAuth in new tab
+      window.open(authUrl, '_blank');
+      // Poll for status change after user completes OAuth
+      const poll = setInterval(async () => {
+        try {
+          const status = await getClaudeStatus();
+          if (status.apiKey?.ready || status.cli?.ready || status.agent?.connected) {
+            clearInterval(poll);
+            setClaudeStatus({ ...status, checking: false });
+          }
+        } catch {}
+      }, 3000);
+      // Stop polling after 2 minutes
+      setTimeout(() => clearInterval(poll), 120000);
     } catch (err) {
-      console.error('Auth trigger failed:', err);
+      console.error('OAuth start failed:', err);
     }
-  }, [handleReconnectClaude]);
+  }, []);
 
   const handleSettingsSave = useCallback((settings) => {
     // Settings are saved to localStorage by the modal
