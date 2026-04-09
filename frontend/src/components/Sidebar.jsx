@@ -14,6 +14,9 @@ export default function Sidebar({
   onClose,
   onOpenSettings,
   connected,
+  claudeStatus,
+  onReconnectClaude,
+  onClaudeAuth,
 }) {
   const [contextMenu, setContextMenu] = useState(null);
 
@@ -87,6 +90,48 @@ export default function Sidebar({
             ))}
           </div>
         )}
+
+        {/* Claude Connection Status */}
+        {claudeStatus && !claudeStatus.checking && (() => {
+          const isCloud = claudeStatus.mode === 'cloud';
+          const isConnected = isCloud ? claudeStatus.apiKey?.ready : claudeStatus.cli?.ready;
+          const statusClass = claudeStatus.checking ? 'checking' : isConnected ? 'connected' : 'disconnected';
+          const label = claudeStatus.checking ? 'בודק חיבור...'
+            : isConnected ? 'Claude מחובר'
+            : 'Claude מנותק';
+          return (
+            <div className="mcp-status-bar">
+              <div className="mcp-status-row">
+                <span className={`mcp-dot ${statusClass}`} />
+                <span className="mcp-label">{label}</span>
+              </div>
+              {!isConnected && (
+                <div className="mcp-actions">
+                  <button className="mcp-reconnect-btn" onClick={onReconnectClaude}>
+                    בדוק שוב
+                  </button>
+                  {isCloud ? (
+                    <button
+                      className="mcp-auth-link"
+                      onClick={onOpenSettings}
+                      title="הגדר API Key בהגדרות"
+                    >
+                      הגדר API Key
+                    </button>
+                  ) : (
+                    <button
+                      className="mcp-auth-link"
+                      onClick={onClaudeAuth}
+                      title="פותח דפדפן להתחברות לחשבון Claude"
+                    >
+                      התחבר ל-Claude
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         <div className="user-info">
           <div className="user-avatar">

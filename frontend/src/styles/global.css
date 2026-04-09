@@ -199,6 +199,107 @@ body {
   margin-right: auto;
 }
 
+/* === MCP Status Bar === */
+
+.mcp-status-bar {
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+}
+
+.mcp-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mcp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mcp-dot.connected {
+  background: var(--success);
+  box-shadow: 0 0 6px var(--success);
+}
+
+.mcp-dot.disconnected {
+  background: var(--error);
+  box-shadow: 0 0 6px var(--error);
+  animation: mcp-pulse 2s ease-in-out infinite;
+}
+
+.mcp-dot.checking {
+  background: var(--warning, #f59e0b);
+  animation: mcp-pulse 1s ease-in-out infinite;
+}
+
+@keyframes mcp-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.mcp-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.mcp-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+  flex-wrap: wrap;
+}
+
+.mcp-reconnect-btn {
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mcp-reconnect-btn:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.mcp-auth-link {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(139, 92, 246, 0.1);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  color: #a78bfa;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.mcp-auth-link:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.5);
+}
+
+.mcp-error {
+  color: var(--error);
+  font-size: 10px;
+  margin-top: 4px;
+  opacity: 0.8;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* === User Info === */
 
 .user-info {

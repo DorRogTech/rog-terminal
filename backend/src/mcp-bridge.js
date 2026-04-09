@@ -23,6 +23,8 @@ class McpBridge extends EventEmitter {
     this.pendingRequests = new Map();
     this.initialized = false;
     this.tools = [];
+    this._healthInterval = null;
+    this._lastPingOk = false;
   }
 
   /**
@@ -123,10 +125,40 @@ class McpBridge extends EventEmitter {
   }
 
   /**
-   * Check if bridge is running and initialized
+   * Check if bridge is running and initialized (basic check, use ping() for real verification)
    */
   isReady() {
     return this.initialized && this.proc && !this.proc.killed;
+  }
+
+  /**
+   * Real health check - sends a tools/list request to verify MCP is actually responsive
+   * Returns { ok, tools, error }
+   */
+  async ping() {
+    if (!this.proc || this.proc.killed || !this.initialized) {
+      this._lastPingOk = false;
+      return { ok: false, error: 'MCP process not running' };
+    }
+    try {
+      const result = await this._sendRequest('tools/list', {});
+      this.tools = result?.tools || [];
+      this._lastPingOk = true;
+      return { ok: true, tools: this.tools.length };
+    } catch (err) {
+      console.error('[MCP Bridge] Ping failed:', err.message);
+      this._lastPingOk = false;
+      // Process is dead/unresponsive, clean up
+      this.initialized = false;
+      return { ok: false, error: err.message };
+    }
+  }
+
+  stopHealthCheck() {
+    if (this._healthInterval) {
+      clearInterval(this._healthInterval);
+      this._healthInterval = null;
+    }
   }
 
   /**

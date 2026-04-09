@@ -122,12 +122,45 @@ app.get('/api/users', authMiddleware, (req, res) => {
   res.json({ users });
 });
 
+// === Claude Connection Status ===
+
+// Check Claude connection - CLI locally, API key on cloud
+app.get('/api/claude/status', authMiddleware, async (req, res) => {
+  try {
+    const isCloud = !!process.env.FLY_APP_NAME;
+    if (isCloud) {
+      // On cloud: check if user has an API key configured
+      const dbUser = stmts.getUserById.get(req.user.id);
+      const hasApiKey = !!(dbUser?.claude_api_key);
+      res.json({
+        cli: { ready: false },
+        apiKey: { ready: hasApiKey },
+        mode: 'cloud',
+      });
+    } else {
+      // Local: check CLI + MCP
+      const cliAvailable = await claudeCli.isAvailable();
+      const mcpPing = await mcpBridge.ping();
+      res.json({
+        cli: { ready: cliAvailable },
+        mcp: { ready: mcpPing.ok, tools: mcpPing.ok ? mcpBridge.getTools().map(t => ({ name: t.name, description: t.description })) : [], error: mcpPing.error || null },
+        mode: 'local',
+      });
+    }
+  } catch (err) {
+    res.json({ cli: { ready: false }, apiKey: { ready: false }, mode: process.env.FLY_APP_NAME ? 'cloud' : 'local' });
+  }
+});
+
 // === MCP Bridge Routes ===
 
-app.get('/api/mcp/status', authMiddleware, (req, res) => {
+app.get('/api/mcp/status', authMiddleware, async (req, res) => {
+  // Real ping - actually verify MCP is responsive
+  const ping = await mcpBridge.ping();
   res.json({
-    ready: mcpBridge.isReady(),
-    tools: mcpBridge.getTools().map(t => ({ name: t.name, description: t.description })),
+    ready: ping.ok,
+    tools: ping.ok ? mcpBridge.getTools().map(t => ({ name: t.name, description: t.description })) : [],
+    error: ping.error || null,
   });
 });
 
@@ -154,6 +187,37 @@ app.post('/api/mcp/call-tool', authMiddleware, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Trigger Claude auth - spawns `claude` which opens browser for OAuth
+app.post('/api/mcp/auth', authMiddleware, (req, res) => {
+  const { spawn } = require('child_process');
+  const claudePath = process.platform === 'win32' ? 'claude.cmd' : 'claude';
+
+  // Run `claude auth login` which opens browser for authentication
+  const proc = spawn(claudePath, ['auth', 'login'], {
+    shell: true,
+    env: { ...process.env },
+    stdio: ['pipe', 'pipe', 'pipe'],
+  });
+
+  let stdout = '';
+  let stderr = '';
+  proc.stdout.on('data', (d) => { stdout += d.toString(); });
+  proc.stderr.on('data', (d) => { stderr += d.toString(); });
+
+  // Give it a few seconds to start the auth flow (it opens browser)
+  setTimeout(() => {
+    res.json({ ok: true, message: 'Auth flow started - check your browser' });
+  }, 2000);
+
+  proc.on('exit', (code) => {
+    console.log(`[MCP Auth] Exit code: ${code}, stdout: ${stdout.slice(0, 200)}, stderr: ${stderr.slice(0, 200)}`);
+    // After auth completes, try to restart MCP
+    if (code === 0) {
+      mcpBridge.start().catch(() => {});
+    }
+  });
 });
 
 app.get('/api/mcp/tools', authMiddleware, (req, res) => {
@@ -274,21 +338,40 @@ mcpBridge.on('log', (text) => {
   }
 });
 
+// Broadcast Claude connection status to all clients
+let lastClaudeStatus = null;
+
+async function checkAndBroadcastClaudeStatus() {
+  try {
+    const cliReady = await claudeCli.isAvailable();
+    const mcpPing = await mcpBridge.ping();
+    const status = {
+      type: 'claude_status',
+      cli: { ready: cliReady },
+      mcp: { ready: mcpPing.ok, tools: mcpPing.ok ? (mcpPing.tools || 0) : 0, error: mcpPing.error || null },
+    };
+    const key = `${cliReady}-${mcpPing.ok}`;
+    if (key !== lastClaudeStatus) {
+      lastClaudeStatus = key;
+      console.log(`[Claude Status] CLI=${cliReady}, MCP=${mcpPing.ok}`);
+      if (wss.broadcastAll) wss.broadcastAll(status);
+    }
+  } catch (err) {
+    console.error('[Claude Status] Check failed:', err.message);
+  }
+}
+
 mcpBridge.on('ready', ({ tools }) => {
   console.log(`[MCP] Ready with ${tools.length} tools`);
-  if (wss.broadcastAll) {
-    wss.broadcastAll({
-      type: 'mcp_ready',
-      tools: tools.map(t => ({ name: t.name, description: t.description })),
-    });
-  }
+  checkAndBroadcastClaudeStatus();
 });
 
 mcpBridge.on('disconnected', () => {
-  if (wss.broadcastAll) {
-    wss.broadcastAll({ type: 'mcp_disconnected' });
-  }
+  checkAndBroadcastClaudeStatus();
 });
+
+// Periodic health check every 30 seconds
+setInterval(checkAndBroadcastClaudeStatus, 30000);
 
 // Auto-start MCP bridge on server start (local mode only)
 if (!process.env.FLY_APP_NAME) {

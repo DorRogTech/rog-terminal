@@ -93,12 +93,20 @@ export async function getMcpStatus() {
   return apiFetch('/mcp/status');
 }
 
+export async function getClaudeStatus() {
+  return apiFetch('/claude/status');
+}
+
 export async function startMcp() {
   return apiFetch('/mcp/start', { method: 'POST' });
 }
 
 export async function getMcpTools() {
   return apiFetch('/mcp/tools');
+}
+
+export async function triggerMcpAuth() {
+  return apiFetch('/mcp/auth', { method: 'POST' });
 }
 
 export { getToken, getUser, clearAuth };

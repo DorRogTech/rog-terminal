@@ -5,7 +5,7 @@ import ChatArea from './components/ChatArea';
 import SettingsModal from './components/SettingsModal';
 import SharedTerminal from './components/SharedTerminal';
 import ProjectSelector from './components/ProjectSelector';
-import { getToken, getUser, getSessions, logout } from './utils/api';
+import { getToken, getUser, getSessions, logout, getClaudeStatus, startMcp, triggerMcpAuth } from './utils/api';
 import wsClient from './utils/websocket';
 
 export default function App() {
@@ -22,6 +22,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [showTerminal, setShowTerminal] = useState(false);
   const [showProjects, setShowProjects] = useState(false);
+  const [claudeStatus, setClaudeStatus] = useState({ cli: { ready: false }, mcp: { ready: false, tools: 0 }, checking: true });
 
   // Load sessions on mount
   useEffect(() => {
@@ -37,6 +38,14 @@ export default function App() {
       }
     });
   }
+
+  // Claude connection status - fetch on mount, then rely on WebSocket broadcasts
+  useEffect(() => {
+    if (!token) return;
+    getClaudeStatus()
+      .then((s) => setClaudeStatus({ ...s, checking: false }))
+      .catch(() => setClaudeStatus({ cli: { ready: false }, mcp: { ready: false, tools: 0 }, checking: false }));
+  }, [token]);
 
   // WebSocket connection
   useEffect(() => {
@@ -115,6 +124,10 @@ export default function App() {
         loadSessions();
       }),
 
+      wsClient.on('claude_status', (data) => {
+        setClaudeStatus({ cli: data.cli, mcp: data.mcp, checking: false });
+      }),
+
       wsClient.on('mcp_message', (data) => {
         // Handle MCP responses
         console.log('MCP message:', data);
@@ -190,6 +203,26 @@ export default function App() {
     wsClient.sendMessage(content);
   }, []);
 
+  const handleReconnectClaude = useCallback(async () => {
+    setClaudeStatus(prev => ({ ...prev, checking: true }));
+    try {
+      const status = await getClaudeStatus();
+      setClaudeStatus({ ...status, checking: false });
+    } catch (err) {
+      setClaudeStatus({ cli: { ready: false }, mcp: { ready: false, tools: 0 }, checking: false });
+    }
+  }, []);
+
+  const handleClaudeAuth = useCallback(async () => {
+    try {
+      await triggerMcpAuth();
+      // Re-check after a delay to let auth complete
+      setTimeout(handleReconnectClaude, 5000);
+    } catch (err) {
+      console.error('Auth trigger failed:', err);
+    }
+  }, [handleReconnectClaude]);
+
   const handleSettingsSave = useCallback((settings) => {
     // Settings are saved to localStorage by the modal
     console.log('Settings saved:', settings);
@@ -217,6 +250,9 @@ export default function App() {
         onClose={() => setSidebarOpen(false)}
         onOpenSettings={() => setShowSettings(true)}
         connected={connected}
+        claudeStatus={claudeStatus}
+        onReconnectClaude={handleReconnectClaude}
+        onClaudeAuth={handleClaudeAuth}
       />
       <ChatArea
         messages={messages}
