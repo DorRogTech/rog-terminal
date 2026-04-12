@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import wsClient from '../utils/websocket';
+import { processBidi } from '../utils/bidi';
 import MobileTerminalOutput from './MobileTerminalOutput';
 import MobileTerminalInput from './MobileTerminalInput';
 
@@ -87,10 +88,10 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
 
     // Receive output from server
     const unsubOutput = wsClient.on('terminal_output', (msg) => {
-      if (msg.data) term.write(msg.data);
+      if (msg.data) term.write(processBidi(msg.data));
     });
     const unsubHistory = wsClient.on('terminal_history', (msg) => {
-      if (msg.data) term.write(msg.data);
+      if (msg.data) term.write(processBidi(msg.data));
     });
     const unsubReady = wsClient.on('terminal_ready', () => {
       setReady(true);
@@ -157,12 +158,12 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       if (msg.data) {
         outputCounterRef.current++;
         // Use a unique key wrapper so React sees a new value each time
-        setMobileOutputBuffer(msg.data);
+        setMobileOutputBuffer(processBidi(msg.data));
       }
     });
     const unsubHistory = wsClient.on('terminal_history', (msg) => {
       if (msg.data) {
-        setMobileOutputBuffer(msg.data);
+        setMobileOutputBuffer(processBidi(msg.data));
       }
     });
     const unsubReady = wsClient.on('terminal_ready', () => {

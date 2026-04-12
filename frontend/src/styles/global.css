@@ -1737,6 +1737,8 @@ body {
 
 .mobile-term-line {
   min-height: 1.6em;
+  direction: auto;
+  unicode-bidi: plaintext;
 }
 
 /* === Mobile Terminal Input Bar === */
