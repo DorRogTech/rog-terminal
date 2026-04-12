@@ -322,8 +322,22 @@ export default function App() {
         onOAuthCode={handleOAuthCode}
         onOAuthCancel={() => setOauthPending(null)}
       />
-      {/* On mobile, use display:none to preserve state instead of conditional rendering */}
-      <div style={isMobile && mobileActiveTab !== 'chat' ? { display: 'none' } : undefined} className="mobile-chat-wrapper">
+      {isMobile ? (
+        <div style={mobileActiveTab !== 'chat' ? { display: 'none' } : undefined} className="mobile-chat-wrapper">
+          <ChatArea
+            messages={messages}
+            onSendMessage={handleSendMessage}
+            sessionName={activeSessionName}
+            typingUsers={typingUsers}
+            onMenuClick={() => setSidebarOpen(true)}
+            currentUser={user}
+            onOpenTerminal={() => { setShowTerminal(true); setMobileActiveTab('terminal'); }}
+            onOpenProjects={() => setShowProjects(true)}
+            hasActiveSession={!!activeSession}
+            currentProjectName={currentProjectName}
+          />
+        </div>
+      ) : (
         <ChatArea
           messages={messages}
           onSendMessage={handleSendMessage}
@@ -331,12 +345,12 @@ export default function App() {
           typingUsers={typingUsers}
           onMenuClick={() => setSidebarOpen(true)}
           currentUser={user}
-          onOpenTerminal={() => { setShowTerminal(true); if (isMobile) setMobileActiveTab('terminal'); }}
+          onOpenTerminal={() => setShowTerminal(true)}
           onOpenProjects={() => setShowProjects(true)}
           hasActiveSession={!!activeSession}
           currentProjectName={currentProjectName}
         />
-      </div>
+      )}
       {showSettings && (
         <SettingsModal
           user={user}
