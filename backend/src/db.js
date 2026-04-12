@@ -60,7 +60,8 @@ const stmts = {
   ),
   getUserByUsername: db.prepare('SELECT * FROM users WHERE username = ?'),
   getUserByEmail: db.prepare('SELECT * FROM users WHERE email = ?'),
-  getUserById: db.prepare('SELECT id, username, email, display_name, device_name, claude_api_key, last_seen FROM users WHERE id = ?'),
+  getUserById: db.prepare('SELECT id, username, email, display_name, device_name, last_seen FROM users WHERE id = ?'),
+  getUserByIdInternal: db.prepare('SELECT id, username, email, display_name, device_name, claude_api_key, last_seen FROM users WHERE id = ?'),
   updateLastSeen: db.prepare('UPDATE users SET last_seen = CURRENT_TIMESTAMP, device_name = ? WHERE id = ?'),
   updateApiKey: db.prepare('UPDATE users SET claude_api_key = ? WHERE id = ?'),
   getAllUsers: db.prepare('SELECT id, username, email, display_name, device_name, last_seen FROM users'),
@@ -68,6 +69,15 @@ const stmts = {
   createSession: db.prepare('INSERT INTO sessions (id, name, created_by) VALUES (?, ?, ?)'),
   getSession: db.prepare('SELECT * FROM sessions WHERE id = ?'),
   getAllSessions: db.prepare('SELECT s.*, u.display_name as creator_name FROM sessions s JOIN users u ON s.created_by = u.id ORDER BY s.updated_at DESC'),
+  getAccessibleSessions: db.prepare(`
+    SELECT DISTINCT s.*, u.display_name as creator_name FROM sessions s
+    JOIN users u ON s.created_by = u.id
+    WHERE s.created_by = ? OR s.id IN (SELECT DISTINCT session_id FROM messages WHERE user_id = ?)
+    ORDER BY s.updated_at DESC
+  `),
+  userHasSessionAccess: db.prepare(`
+    SELECT 1 FROM sessions WHERE id = ? AND (created_by = ? OR id IN (SELECT DISTINCT session_id FROM messages WHERE user_id = ?))
+  `),
   updateSessionTime: db.prepare('UPDATE sessions SET updated_at = CURRENT_TIMESTAMP WHERE id = ?'),
   renameSession: db.prepare('UPDATE sessions SET name = ? WHERE id = ?'),
   deleteSession: db.prepare('DELETE FROM sessions WHERE id = ?'),

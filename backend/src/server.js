@@ -4,14 +4,18 @@ const express = require('express');
 const http = require('http');
 const cors = require('cors');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { register, login, authMiddleware } = require('./auth');
 const { stmts } = require('./db');
+const { encrypt, decrypt, isEncrypted } = require('./crypto-utils');
 const { setupWebSocket } = require('./websocket');
 const mcpBridge = require('./mcp-bridge');
 const claudeApi = require('./claude-api');
 const claudeCli = require('./claude-cli');
+
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 const app = express();
 const server = http.createServer(app);
@@ -20,14 +24,48 @@ const PORT = process.env.PORT || 3001;
 
 // Security middleware
 app.use(helmet({
-  contentSecurityPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      connectSrc: ["'self'", "wss:", "ws:"],
+      imgSrc: ["'self'", "data:"],
+      fontSrc: ["'self'"],
+    },
+  },
   crossOriginEmbedderPolicy: false,
 }));
+
+// CORS: use env var, default to production URL, allow localhost in dev
+const corsOrigins = process.env.CORS_ORIGIN
+  ? process.env.CORS_ORIGIN.split(',').map(s => s.trim())
+  : IS_PRODUCTION
+    ? ['https://rog-terminal.fly.dev']
+    : ['http://localhost:5173', 'http://localhost:3001'];
+
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
+  origin: corsOrigins,
   credentials: true,
 }));
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
+
+// Rate limiters
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5,
+  message: { error: 'Too many login attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  message: { error: 'Too many registration attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Serve frontend static files in production
 const frontendPath = path.join(__dirname, '..', '..', 'frontend', 'build');
@@ -35,26 +73,26 @@ app.use(express.static(frontendPath));
 
 // === Auth Routes ===
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', registerLimiter, async (req, res) => {
   try {
     const { username, email, password, displayName, deviceName } = req.body;
     if (!username || !email || !password || !displayName) {
       return res.status(400).json({ error: 'username, email, password, and displayName are required' });
     }
-    if (username.length < 2 || username.length > 30) {
-      return res.status(400).json({ error: 'Username must be 2-30 characters' });
+    if (!/^[a-zA-Z0-9_]{3,30}$/.test(username)) {
+      return res.status(400).json({ error: 'Username must be 3-30 alphanumeric characters or underscores' });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
     }
     const result = await register(username, email, password, displayName, deviceName || '');
     res.json(result);
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(400).json({ error: IS_PRODUCTION ? 'Registration failed' : err.message });
   }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { username, password, deviceName } = req.body;
     if (!username || !password) {
@@ -63,7 +101,7 @@ app.post('/api/auth/login', async (req, res) => {
     const result = await login(username, password, deviceName || '');
     res.json(result);
   } catch (err) {
-    res.status(401).json({ error: err.message });
+    res.status(401).json({ error: 'Invalid credentials' });
   }
 });
 
@@ -76,13 +114,17 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
 // === Session Routes ===
 
 app.get('/api/sessions', authMiddleware, (req, res) => {
-  const sessions = stmts.getAllSessions.all();
+  const sessions = stmts.getAccessibleSessions.all(req.user.id, req.user.id);
   res.json({ sessions });
 });
 
 app.post('/api/sessions', authMiddleware, (req, res) => {
   const id = uuidv4();
-  const name = (req.body.name || 'New Session').slice(0, 100);
+  const rawName = req.body.name || 'New Session';
+  if (rawName.length > 100) {
+    return res.status(400).json({ error: 'Session name too long' });
+  }
+  const name = rawName.slice(0, 100);
   stmts.createSession.run(id, name, req.user.id);
   const session = stmts.getSession.get(id);
   res.json({ session });
@@ -95,21 +137,38 @@ app.get('/api/sessions/:id', authMiddleware, (req, res) => {
 });
 
 app.get('/api/sessions/:id/messages', authMiddleware, (req, res) => {
+  const hasAccess = stmts.userHasSessionAccess.get(req.params.id, req.user.id, req.user.id);
+  if (!hasAccess) {
+    return res.status(403).json({ error: 'You do not have access to this session' });
+  }
   const limit = Math.min(parseInt(req.query.limit) || 200, 1000);
   const messages = stmts.getMessages.all(req.params.id);
   res.json({ messages: messages.slice(-limit) });
 });
 
 app.patch('/api/sessions/:id', authMiddleware, (req, res) => {
-  const { name } = req.body;
-  if (name) stmts.renameSession.run(name.slice(0, 100), req.params.id);
   const session = stmts.getSession.get(req.params.id);
-  res.json({ session });
+  if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.created_by !== req.user.id) {
+    return res.status(403).json({ error: 'Only the session creator can rename it' });
+  }
+  const { name } = req.body;
+  if (name) {
+    if (!/^[\w\s\u0590-\u05FF\u0600-\u06FF.,!?()-]{1,100}$/.test(name)) {
+      return res.status(400).json({ error: 'Invalid session name' });
+    }
+    stmts.renameSession.run(name.slice(0, 100), req.params.id);
+  }
+  const updated = stmts.getSession.get(req.params.id);
+  res.json({ session: updated });
 });
 
 app.delete('/api/sessions/:id', authMiddleware, (req, res) => {
   const session = stmts.getSession.get(req.params.id);
   if (!session) return res.status(404).json({ error: 'Session not found' });
+  if (session.created_by !== req.user.id) {
+    return res.status(403).json({ error: 'Only the session creator can delete it' });
+  }
   stmts.deleteSessionMessages.run(req.params.id);
   stmts.deleteSession.run(req.params.id);
   res.json({ ok: true });
@@ -131,8 +190,8 @@ app.get('/api/claude/status', authMiddleware, async (req, res) => {
     const agent = wss.isAgentConnected ? wss.isAgentConnected() : { connected: false };
     if (isCloud) {
       // On cloud: check if Agent is connected (Agent = local Claude via MCP)
-      const dbUser = stmts.getUserById.get(req.user.id);
-      const hasApiKey = !!(dbUser?.claude_api_key);
+      const dbUser = stmts.getUserByIdInternal.get(req.user.id);
+      const hasApiKey = !!(dbUser?.claude_api_key && dbUser.claude_api_key.length > 0);
       res.json({
         agent,
         apiKey: { ready: hasApiKey },
@@ -169,7 +228,7 @@ app.post('/api/mcp/start', authMiddleware, async (req, res) => {
     await mcpBridge.start();
     res.json({ ok: true, tools: mcpBridge.getTools().length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: IS_PRODUCTION ? 'MCP start failed' : err.message });
   }
 });
 
@@ -185,7 +244,7 @@ app.post('/api/mcp/call-tool', authMiddleware, async (req, res) => {
     const result = await mcpBridge.callTool(name, args || {});
     res.json({ result });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: IS_PRODUCTION ? 'Tool call failed' : err.message });
   }
 });
 
@@ -255,8 +314,6 @@ app.post('/api/claude/oauth/exchange', authMiddleware, async (req, res) => {
       redirect_uri: CLAUDE_OAUTH.REDIRECT_URI,
       state,
     };
-    console.log('[OAuth] Token request:', { ...tokenBody, code_verifier: '***' });
-
     const tokenRes = await fetch(CLAUDE_OAUTH.TOKEN_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -264,7 +321,7 @@ app.post('/api/claude/oauth/exchange', authMiddleware, async (req, res) => {
     });
 
     const tokenData = await tokenRes.json();
-    console.log('[OAuth] Token response:', tokenRes.status, JSON.stringify(tokenData).slice(0, 300));
+    console.log('[OAuth] Token exchange:', tokenRes.ok ? 'success' : 'failed');
 
     if (!tokenRes.ok || !tokenData.access_token) {
       const errMsg = tokenData.error?.message || tokenData.error_description || JSON.stringify(tokenData.error) || 'Token exchange failed';
@@ -279,17 +336,16 @@ app.post('/api/claude/oauth/exchange', authMiddleware, async (req, res) => {
         headers: { 'Authorization': `Bearer ${tokenData.access_token}` },
       });
       const apiKeyData = await apiKeyRes.json();
-      console.log('[OAuth] API key creation:', apiKeyRes.status, apiKeyData.raw_key ? 'got key' : 'no key');
+      console.log('[OAuth] API key creation:', apiKeyRes.ok ? 'success' : 'failed');
       if (apiKeyData.raw_key) {
         apiKey = apiKeyData.raw_key;
-        console.log(`[OAuth] Got permanent API key: ${apiKey.slice(0, 15)}...`);
       }
     } catch (keyErr) {
       console.log('[OAuth] API key creation failed, using OAuth token:', keyErr.message);
     }
 
-    stmts.updateApiKey.run(apiKey, req.user.id);
-    console.log(`[OAuth] User ${req.user.id} authenticated, key type: ${apiKey.includes('-oat') ? 'oauth-token' : 'api-key'}`);
+    stmts.updateApiKey.run(encrypt(apiKey), req.user.id);
+    console.log(`[OAuth] User ${req.user.id} authenticated successfully`);
 
     // Broadcast updated status
     if (wss.broadcastAll) {
@@ -300,7 +356,7 @@ app.post('/api/claude/oauth/exchange', authMiddleware, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error('[OAuth] Error:', err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: IS_PRODUCTION ? 'OAuth exchange failed' : err.message });
   }
 });
 
@@ -329,7 +385,7 @@ app.post('/api/claude/configure', authMiddleware, (req, res) => {
     claudeApi.configureSession(sessionId, { apiKey, model, systemPrompt });
     res.json({ ok: true, message: 'Claude API configured for session' });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: IS_PRODUCTION ? 'Configuration failed' : err.message });
   }
 });
 
@@ -365,7 +421,7 @@ app.post('/api/claude/send', authMiddleware, async (req, res) => {
 
     res.json({ message: assistantMsg });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: IS_PRODUCTION ? 'Claude request failed' : err.message });
   }
 });
 
@@ -377,7 +433,7 @@ app.get('/api/claude/status', authMiddleware, (req, res) => {
 
 app.post('/api/auth/api-key', authMiddleware, (req, res) => {
   const { apiKey } = req.body;
-  stmts.updateApiKey.run(apiKey || '', req.user.id);
+  stmts.updateApiKey.run(apiKey ? encrypt(apiKey) : '', req.user.id);
   res.json({ ok: true });
 });
 

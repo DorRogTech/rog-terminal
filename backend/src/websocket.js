@@ -1,13 +1,16 @@
 const { WebSocketServer } = require('ws');
 const { verifyToken } = require('./auth');
 const { stmts } = require('./db');
+const { decrypt, isEncrypted, encrypt } = require('./crypto-utils');
 const { v4: uuidv4 } = require('uuid');
 const claudeApi = require('./claude-api');
 const claudeCli = require('./claude-cli');
 const sharedTerminal = require('./shared-terminal');
 
+const MAX_CHAT_CONTENT_LENGTH = 10 * 1024; // 10KB
+
 function setupWebSocket(server) {
-  const wss = new WebSocketServer({ server, path: '/ws' });
+  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024 });
 
   // Track connected clients: Map<ws, { user, sessionId, deviceName }>
   const clients = new Map();
@@ -199,6 +202,10 @@ function setupWebSocket(server) {
           ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
           return;
         }
+        if (session.created_by !== user.id) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Only the session creator can delete it' }));
+          return;
+        }
         stmts.deleteSessionMessages.run(sessionId);
         stmts.deleteSession.run(sessionId);
         broadcastAll({ type: 'session_deleted', sessionId });
@@ -209,6 +216,19 @@ function setupWebSocket(server) {
       case 'rename_session': {
         const { sessionId, name } = data;
         if (!name || !name.trim()) return;
+        const renameSession = stmts.getSession.get(sessionId);
+        if (!renameSession) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Session not found' }));
+          return;
+        }
+        if (renameSession.created_by !== user.id) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Only the session creator can rename it' }));
+          return;
+        }
+        if (!/^[\w\s\u0590-\u05FF\u0600-\u06FF.,!?()-]{1,100}$/.test(name)) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid session name' }));
+          return;
+        }
         stmts.renameSession.run(name.slice(0, 100), sessionId);
         broadcastAll({ type: 'sessions_updated' });
         break;
@@ -223,6 +243,10 @@ function setupWebSocket(server) {
 
         const { content } = data;
         if (!content || !content.trim()) return;
+        if (content.length > MAX_CHAT_CONTENT_LENGTH) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Message too long (max 10KB)' }));
+          return;
+        }
 
         // Save user message
         const result = stmts.addMessage.run(info.sessionId, user.id, 'user', content, deviceName);
@@ -282,9 +306,16 @@ function setupWebSocket(server) {
 
           if (isCloud) {
             // Cloud mode: use user's API key directly (no CLI available)
-            const dbUser = stmts.getUserById.get(user.id);
+            const dbUser = stmts.getUserByIdInternal.get(user.id);
             if (dbUser && dbUser.claude_api_key) {
-              claudeApi.configureSession(sessionId, { apiKey: dbUser.claude_api_key });
+              let apiKey = dbUser.claude_api_key;
+              // Migration: encrypt plaintext keys on read
+              if (!isEncrypted(apiKey) && apiKey.length > 0) {
+                const encrypted = encrypt(apiKey);
+                stmts.updateApiKey.run(encrypted, user.id);
+              }
+              apiKey = decrypt(apiKey);
+              claudeApi.configureSession(sessionId, { apiKey });
               const recentMsgs = stmts.getMessages.all(sessionId)
                 .slice(-20)
                 .map(m => ({ role: m.role, content: m.content }));
@@ -298,9 +329,15 @@ function setupWebSocket(server) {
               .then(r => r.text)
               .catch((cliErr) => {
                 console.log(`[Chat] CLI failed: ${cliErr.message}, trying user API key...`);
-                const dbUser = stmts.getUserById.get(user.id);
+                const dbUser = stmts.getUserByIdInternal.get(user.id);
                 if (dbUser && dbUser.claude_api_key) {
-                  claudeApi.configureSession(sessionId, { apiKey: dbUser.claude_api_key });
+                  let fallbackKey = dbUser.claude_api_key;
+                  if (!isEncrypted(fallbackKey) && fallbackKey.length > 0) {
+                    const encrypted = encrypt(fallbackKey);
+                    stmts.updateApiKey.run(encrypted, user.id);
+                  }
+                  fallbackKey = decrypt(fallbackKey);
+                  claudeApi.configureSession(sessionId, { apiKey: fallbackKey });
                   const recentMsgs = stmts.getMessages.all(sessionId)
                     .slice(-20)
                     .map(m => ({ role: m.role, content: m.content }));
@@ -363,6 +400,12 @@ function setupWebSocket(server) {
       }
 
       case 'system_message': {
+        // Only allow system_message from Agent connections
+        if (!deviceName.startsWith('Agent-')) {
+          ws.send(JSON.stringify({ type: 'error', message: 'system_message is only allowed from Agent connections' }));
+          return;
+        }
+
         // Save a system/assistant message (from MCP response)
         const info = clients.get(ws);
         if (!info || !info.sessionId) return;

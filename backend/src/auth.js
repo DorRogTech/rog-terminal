@@ -2,7 +2,11 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { stmts } = require('./db');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'rog-terminal-default-secret-change-me';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is required');
+  process.exit(1);
+}
 const TOKEN_EXPIRY = '7d';
 const ALLOWED_DOMAIN = process.env.ALLOWED_DOMAIN || 'rog-tech.com';
 
