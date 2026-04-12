@@ -5,6 +5,8 @@ import ChatArea from './components/ChatArea';
 import SettingsModal from './components/SettingsModal';
 import SharedTerminal from './components/SharedTerminal';
 import ProjectSelector from './components/ProjectSelector';
+import MobileTabBar from './components/MobileTabBar';
+import useVisualViewport from './hooks/useVisualViewport';
 import { getToken, getUser, getSessions, logout, getClaudeStatus, startMcp, startClaudeOAuth, exchangeClaudeOAuth, disconnectClaude } from './utils/api';
 import wsClient from './utils/websocket';
 
@@ -24,6 +26,18 @@ export default function App() {
   const [showProjects, setShowProjects] = useState(false);
   const [claudeStatus, setClaudeStatus] = useState({ cli: { ready: false }, agent: { connected: false }, checking: true });
   const [currentProjectName, setCurrentProjectName] = useState(null);
+  const [mobileActiveTab, setMobileActiveTab] = useState('chat');
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024));
+  const viewport = useVisualViewport();
+
+  // Mobile detection
+  useEffect(() => {
+    function checkMobile() {
+      setIsMobile(window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024));
+    }
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Load sessions on mount
   useEffect(() => {
@@ -275,8 +289,15 @@ export default function App() {
     return <AuthPage onAuth={handleAuth} />;
   }
 
+  const handleMobileTabChange = useCallback((tab) => {
+    setMobileActiveTab(tab);
+    if (tab === 'terminal' && activeSession) {
+      setShowTerminal(true);
+    }
+  }, [activeSession]);
+
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${isMobile ? 'mobile-layout' : ''}`}>
       <Sidebar
         sessions={sessions}
         activeSession={activeSession}
@@ -301,18 +322,21 @@ export default function App() {
         onOAuthCode={handleOAuthCode}
         onOAuthCancel={() => setOauthPending(null)}
       />
-      <ChatArea
-        messages={messages}
-        onSendMessage={handleSendMessage}
-        sessionName={activeSessionName}
-        typingUsers={typingUsers}
-        onMenuClick={() => setSidebarOpen(true)}
-        currentUser={user}
-        onOpenTerminal={() => setShowTerminal(true)}
-        onOpenProjects={() => setShowProjects(true)}
-        hasActiveSession={!!activeSession}
-        currentProjectName={currentProjectName}
-      />
+      {/* On mobile, use display:none to preserve state instead of conditional rendering */}
+      <div style={isMobile && mobileActiveTab !== 'chat' ? { display: 'none' } : undefined} className="mobile-chat-wrapper">
+        <ChatArea
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          sessionName={activeSessionName}
+          typingUsers={typingUsers}
+          onMenuClick={() => setSidebarOpen(true)}
+          currentUser={user}
+          onOpenTerminal={() => { setShowTerminal(true); if (isMobile) setMobileActiveTab('terminal'); }}
+          onOpenProjects={() => setShowProjects(true)}
+          hasActiveSession={!!activeSession}
+          currentProjectName={currentProjectName}
+        />
+      </div>
       {showSettings && (
         <SettingsModal
           user={user}
@@ -324,11 +348,28 @@ export default function App() {
       {showProjects && (
         <ProjectSelector onClose={() => setShowProjects(false)} />
       )}
-      <SharedTerminal
-        active={showTerminal && !!activeSession}
-        onClose={() => setShowTerminal(false)}
-        currentProjectName={currentProjectName}
-      />
+      {/* On mobile with terminal tab active, show terminal inline instead of overlay */}
+      {isMobile ? (
+        <div style={mobileActiveTab !== 'terminal' ? { display: 'none' } : undefined} className="mobile-terminal-wrapper">
+          <SharedTerminal
+            active={mobileActiveTab === 'terminal' && !!activeSession}
+            onClose={() => { setShowTerminal(false); setMobileActiveTab('chat'); }}
+            currentProjectName={currentProjectName}
+          />
+        </div>
+      ) : (
+        <SharedTerminal
+          active={showTerminal && !!activeSession}
+          onClose={() => setShowTerminal(false)}
+          currentProjectName={currentProjectName}
+        />
+      )}
+      {isMobile && (
+        <MobileTabBar
+          activeTab={mobileActiveTab}
+          onTabChange={handleMobileTabChange}
+        />
+      )}
     </div>
   );
 }
