@@ -4,7 +4,6 @@ import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import wsClient from '../utils/websocket';
-import { processBidi } from '../utils/bidi';
 import MobileTerminalOutput from './MobileTerminalOutput';
 import MobileTerminalInput from './MobileTerminalInput';
 
@@ -21,7 +20,7 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
   // Mobile detection
   useEffect(() => {
     function checkMobile() {
-      setIsMobile(window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024));
+      setIsMobile(window.innerWidth <= 768);
     }
     checkMobile();
     window.addEventListener('resize', checkMobile);
@@ -86,12 +85,12 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
       wsClient.send({ type: 'terminal_input', data });
     });
 
-    // Receive output from server
+    // Receive output from server — no bidi processing for xterm.js (canvas is always LTR)
     const unsubOutput = wsClient.on('terminal_output', (msg) => {
-      if (msg.data) term.write(processBidi(msg.data));
+      if (msg.data) term.write(msg.data);
     });
     const unsubHistory = wsClient.on('terminal_history', (msg) => {
-      if (msg.data) term.write(processBidi(msg.data));
+      if (msg.data) term.write(msg.data);
     });
     const unsubReady = wsClient.on('terminal_ready', () => {
       setReady(true);
@@ -157,13 +156,12 @@ export default function SharedTerminal({ active, onClose, currentProjectName }) 
     const unsubOutput = wsClient.on('terminal_output', (msg) => {
       if (msg.data) {
         outputCounterRef.current++;
-        // Use a unique key wrapper so React sees a new value each time
-        setMobileOutputBuffer(processBidi(msg.data));
+        setMobileOutputBuffer(msg.data);
       }
     });
     const unsubHistory = wsClient.on('terminal_history', (msg) => {
       if (msg.data) {
-        setMobileOutputBuffer(processBidi(msg.data));
+        setMobileOutputBuffer(msg.data);
       }
     });
     const unsubReady = wsClient.on('terminal_ready', () => {

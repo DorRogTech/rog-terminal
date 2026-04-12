@@ -27,13 +27,13 @@ export default function App() {
   const [claudeStatus, setClaudeStatus] = useState({ cli: { ready: false }, agent: { connected: false }, checking: true });
   const [currentProjectName, setCurrentProjectName] = useState(null);
   const [mobileActiveTab, setMobileActiveTab] = useState('chat');
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024));
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 768);
   const viewport = useVisualViewport();
 
   // Mobile detection
   useEffect(() => {
     function checkMobile() {
-      setIsMobile(window.innerWidth <= 768 || ('ontouchstart' in window && window.innerWidth <= 1024));
+      setIsMobile(window.innerWidth <= 768);
     }
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
